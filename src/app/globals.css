@@ -1,0 +1,128 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Surface + text tokens. Defined once here so every screen (and the print
+ * stylesheet for receipts/ID cards/certificates) reads from the same place.
+ */
+@layer base {
+  :root {
+    --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
+      'Helvetica Neue', Arial, sans-serif;
+    --font-mono: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+
+    --surface-page: 248 250 252; /* slate-50  */
+    --surface-card: 255 255 255;
+    --surface-sunken: 241 245 249; /* slate-100 */
+    --surface-hover: 248 250 252;
+
+    --text-strong: 15 23 42; /* slate-900 */
+    --text-base: 51 65 85; /* slate-700 */
+    --text-muted: 100 116 139; /* slate-500 */
+    --text-faint: 148 163 184; /* slate-400 */
+
+    --border-base: 226 232 240; /* slate-200 */
+    --border-strong: 203 213 225; /* slate-300 */
+
+    --brand: 0 165 159;
+    --brand-fill: 0 124 119;
+
+    --ring: 0 165 159;
+  }
+
+  [data-theme='dark'] {
+    --surface-page: 9 14 25;
+    --surface-card: 17 24 39;
+    --surface-sunken: 24 33 50;
+    --surface-hover: 30 41 59;
+
+    --text-strong: 248 250 252;
+    --text-base: 203 213 225;
+    --text-muted: 148 163 184;
+    --text-faint: 100 116 139;
+
+    --border-base: 39 51 71;
+    --border-strong: 51 65 85;
+
+    /* On dark surfaces the brand teal has ~6:1 contrast, so it can carry
+       text directly - unlike on white. */
+    --brand: 45 198 191;
+    --brand-fill: 0 149 143;
+
+    --ring: 45 198 191;
+  }
+
+  * {
+    border-color: rgb(var(--border-base));
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: rgb(var(--surface-page));
+    color: rgb(var(--text-base));
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Visible, brand-coloured focus ring on every interactive element. */
+  :focus-visible {
+    outline: 2px solid rgb(var(--ring));
+    outline-offset: 2px;
+  }
+
+  /* Tabular figures everywhere money or counts are shown. */
+  .numeric {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum';
+  }
+}
+
+@layer components {
+  .surface-card {
+    background-color: rgb(var(--surface-card));
+    border: 1px solid rgb(var(--border-base));
+  }
+
+  .text-strong {
+    color: rgb(var(--text-strong));
+  }
+  .text-muted {
+    color: rgb(var(--text-muted));
+  }
+  .text-faint {
+    color: rgb(var(--text-faint));
+  }
+
+  /* Thin, unobtrusive scrollbars for the long master/report tables. */
+  .scroll-slim {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(var(--border-strong)) transparent;
+  }
+  .scroll-slim::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scroll-slim::-webkit-scrollbar-thumb {
+    background-color: rgb(var(--border-strong));
+    border-radius: 9999px;
+  }
+  .scroll-slim::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+/* Receipts, ID cards, TCs and certificates are printed from the browser. */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+    color: #000;
+  }
+}

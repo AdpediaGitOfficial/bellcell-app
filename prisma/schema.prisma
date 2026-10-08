@@ -1,0 +1,1771 @@
+// ===========================================================================
+// Bell Cell EduSuite - data model
+// ===========================================================================
+// Conventions
+//   * Table names are snake_case plural via @@map; columns keep Prisma's
+//     camelCase (quoted in SQL) so the generated client stays idiomatic.
+//   * MONEY IS ALWAYS AN INTEGER NUMBER OF PAISE, and every such field is
+//     named `*Paise` so the unit cannot be misread. Never use Float for money.
+//     Ceiling per row is Int32 = 21,47,48,364 paise (approx. Rs 2.14 crore).
+//   * Every record that belongs to a physical centre carries `branchId`.
+//     The vendor scope implied multi-branch (dashboard "progress of different
+//     branches") but shipped no Branch master - see docs/decisions.md ADR-002.
+//   * Masters are archived (`archivedAt`), never hard-deleted, because they
+//     are referenced by student records that must stay historically accurate.
+// ===========================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ===========================================================================
+// SECTION 1 - Institute, branches, identity and access
+// ===========================================================================
+
+model Branch {
+  id        String   @id @default(cuid())
+  code      String   @unique // e.g. "BC-MAIN"
+  name      String
+  addressLine1 String?
+  addressLine2 String?
+  city      String?
+  state     String?
+  pincode   String?
+  phone     String?
+  email     String?
+  isHeadOffice Boolean @default(false)
+  archivedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users              UserBranch[]
+  employees          Employee[]
+  leads              EnquiryLead[]
+  enquiries          Enquiry[]
+  students           Student[]
+  payments           Payment[]
+  dailyTransactions  DailyTransaction[]
+  ledgerEntries      LedgerEntry[]
+  feeStructures      FeeStructure[]
+  receiptSequences   ReceiptSequence[]
+  affiliationPayments AffiliationPayment[]
+  examSchedules      ExamSchedule[]
+  classSections      ClassSection[]
+  leadImportBatches  LeadImportBatch[]
+
+  @@map("branches")
+}
+
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  ACCOUNTANT
+  COUNSELLOR
+  FACULTY
+  STAFF
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  fullName     String
+  role         UserRole @default(STAFF)
+  isActive     Boolean  @default(true)
+  lastLoginAt  DateTime?
+
+  // Failed-login throttling (no equivalent in the vendor scope).
+  failedLoginCount Int      @default(0)
+  lockedUntil      DateTime?
+
+  mustChangePassword Boolean @default(false)
+
+  employeeId String?   @unique
+  employee   Employee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  branches    UserBranch[]
+  sessions    Session[]
+  overrides   UserPermissionOverride[]
+  auditLogs   AuditLog[]
+
+  assignedLeads     EnquiryLead[] @relation("LeadAssignee")
+  assignedEnquiries Enquiry[]     @relation("EnquiryAssignee")
+  followUps         EnquiryFollowUp[]
+  collectedPayments Payment[]     @relation("PaymentCollectedBy")
+  approvedConcessions FeeConcession[] @relation("ConcessionApprovedBy")
+
+  @@index([role])
+  @@map("users")
+}
+
+// Which branches a user may act in. A SUPER_ADMIN implicitly sees all.
+model UserBranch {
+  id       String @id @default(cuid())
+  userId   String
+  branchId String
+  isDefault Boolean @default(false)
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, branchId])
+  @@map("user_branches")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  branchId  String? // the branch the user is currently acting in
+  userAgent String?
+  ipAddress String?
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+// The role -> permission matrix lives in code (src/lib/rbac/matrix.ts) so it
+// is reviewable in version control. This table records deliberate per-user
+// exceptions to it, which is what institutes actually ask for in practice.
+model UserPermissionOverride {
+  id         String  @id @default(cuid())
+  userId     String
+  permission String // e.g. "enquiry.lead:delete"
+  granted    Boolean // true = grant, false = explicit deny (deny wins)
+  reason     String?
+  createdAt  DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, permission])
+  @@map("user_permission_overrides")
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  ARCHIVE
+  RESTORE
+  LOGIN
+  LOGIN_FAILED
+  LOGOUT
+  EXPORT
+  BULK_IMPORT
+  STATUS_CHANGE
+  PAYMENT
+  REFUND
+}
+
+// Append-only. Nothing in the vendor scope covered audit trails; for a system
+// holding fee money and students' original certificates this is mandatory.
+model AuditLog {
+  id         String      @id @default(cuid())
+  userId     String?
+  branchId   String?
+  action     AuditAction
+  entityType String // e.g. "Student"
+  entityId   String?
+  summary    String
+  before     Json?
+  after      Json?
+  ipAddress  String?
+  createdAt  DateTime    @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@index([userId])
+  @@map("audit_logs")
+}
+
+// ===========================================================================
+// SECTION 2 - Masters
+// ===========================================================================
+// The vendor list had 16 global masters with two duplicate pairs:
+//   #13 "Exam center" == #15 "Examination Centre"  -> single ExamCentre
+//   #14 "Second Language" and #16 "Medium"         -> single Language + usage
+//   "Department" appeared under both Employee and the global list -> once
+// ===========================================================================
+
+model CourseType {
+  id         String    @id @default(cuid())
+  name       String    @unique // Post Graduate, Under Graduate, Diploma
+  sortOrder  Int       @default(0)
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  courses  Course[]
+  subjects Subject[]
+
+  @@map("course_types")
+}
+
+model Course {
+  id           String  @id @default(cuid())
+  code         String  @unique // e.g. "BCOM"
+  name         String // B.Com, BA, MCA, MBA
+  courseTypeId String
+  // Duration in years; drives Student.courseYear and promotion.
+  durationYears Int    @default(3)
+  archivedAt   DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  courseType CourseType @relation(fields: [courseTypeId], references: [id])
+
+  subjects            Subject[]
+  affiliationCourses  AffiliationCourse[]
+  students            Student[]
+  feeStructures       FeeStructure[]
+  classSections       ClassSection[]
+  examSchedules       ExamSchedule[]
+  leads               EnquiryLead[]
+  enquiries           Enquiry[]
+  courseTransfersFrom CourseTransfer[] @relation("TransferFromCourse")
+  courseTransfersTo   CourseTransfer[] @relation("TransferToCourse")
+  studyMaterials      StudyMaterial[]
+
+  @@index([courseTypeId])
+  @@map("courses")
+}
+
+model Batch {
+  id         String    @id @default(cuid())
+  name       String    @unique // e.g. "2018-2019"
+  startDate  DateTime
+  endDate    DateTime
+  isCurrent  Boolean   @default(false)
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  students      Student[]
+  feeStructures FeeStructure[]
+  classSections ClassSection[]
+  examSchedules ExamSchedule[]
+
+  @@map("batches")
+}
+
+// "Affiliation & Tie-Up" in the vendor scope - the university or board the
+// institute is affiliated to, or has a tie-up arrangement with.
+model AffiliationBody {
+  id            String    @id @default(cuid())
+  code          String    @unique
+  name          String // Calicut University, Bharathiar University
+  contactPerson String?
+  phone         String?
+  email         String?
+  addressLine1  String?
+  city          String?
+  state         String?
+  archivedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  affiliationCourses AffiliationCourse[]
+  payments           AffiliationPayment[]
+  students           Student[]
+  certificateCustody CertificateCustody[]
+
+  @@map("affiliation_bodies")
+}
+
+// Maps an internal course to the affiliating body's own course code.
+model AffiliationCourse {
+  id                String  @id @default(cuid())
+  affiliationBodyId String
+  courseId          String
+  externalCourseCode String?
+  externalCourseName String?
+  archivedAt        DateTime?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  affiliationBody AffiliationBody @relation(fields: [affiliationBodyId], references: [id])
+  course          Course          @relation(fields: [courseId], references: [id])
+
+  @@unique([affiliationBodyId, courseId])
+  @@map("affiliation_courses")
+}
+
+model Subject {
+  id           String  @id @default(cuid())
+  code         String
+  name         String
+  courseTypeId String?
+  courseId     String?
+  courseYear   Int? // 1..durationYears
+  // Credits/max marks feed the exam-result screens.
+  maxMarks     Int     @default(100)
+  passMarks    Int     @default(35)
+  isElective   Boolean @default(false)
+  archivedAt   DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  courseType CourseType? @relation(fields: [courseTypeId], references: [id])
+  course     Course?     @relation(fields: [courseId], references: [id])
+
+  examScheduleSubjects ExamScheduleSubject[]
+  examResultSubjects   ExamResultSubject[]
+  studyMaterials       StudyMaterial[]
+
+  @@unique([code, courseId, courseYear])
+  @@index([courseId, courseYear])
+  @@map("subjects")
+}
+
+// Vendor master #7 "Syllabus and Study Material" had no description; modelled
+// as an issuable item so the "Study materials" tracking screen and the
+// "Study material issue summary" report have something to hang off.
+model StudyMaterial {
+  id         String    @id @default(cuid())
+  code       String    @unique
+  title      String
+  kind       StudyMaterialKind @default(BOOK)
+  courseId   String?
+  subjectId  String?
+  courseYear Int?
+  // Stock tracking, so issuing cannot go negative.
+  stockTotal  Int @default(0)
+  stockIssued Int @default(0)
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  course  Course?  @relation(fields: [courseId], references: [id])
+  subject Subject? @relation(fields: [subjectId], references: [id])
+
+  issues StudyMaterialIssue[]
+
+  @@map("study_materials")
+}
+
+enum StudyMaterialKind {
+  BOOK
+  SYLLABUS
+  NOTES
+  KIT
+  DIGITAL
+  OTHER
+}
+
+model Religion {
+  id         String    @id @default(cuid())
+  name       String    @unique
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  students Student[]
+
+  @@map("religions")
+}
+
+enum FeeCategory {
+  APPLICATION
+  TUITION
+  EXAMINATION
+  AFFILIATION
+  CERTIFICATE
+  STUDY_MATERIAL
+  ID_CARD
+  FINE
+  OTHER
+}
+
+model FeeType {
+  id       String      @id @default(cuid())
+  code     String      @unique
+  name     String // Application Fee, Exam Fee, Course/Tuition Fee
+  category FeeCategory @default(OTHER)
+  // Whether this fee is onward-payable to the affiliating body, which is what
+  // the "Affiliation & Tie-Up Payment" screen reconciles.
+  isPayableToAffiliation Boolean @default(false)
+  // Default account head so collections post to the ledger automatically.
+  accountHeadId String?
+  isRefundable  Boolean @default(true)
+  archivedAt    DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  accountHead AccountHead? @relation(fields: [accountHeadId], references: [id])
+
+  structureItems      FeeStructureItem[]
+  installments        FeeInstallment[]
+  affiliationPayments AffiliationPayment[]
+
+  @@map("fee_types")
+}
+
+model ClassMode {
+  id         String    @id @default(cuid())
+  name       String    @unique // Regular, Distance, Online, Weekend
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  students      Student[]
+  feeStructures FeeStructure[]
+
+  @@map("class_modes")
+}
+
+model Department {
+  id         String    @id @default(cuid())
+  code       String    @unique
+  name       String
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  employees Employee[]
+
+  @@map("departments")
+}
+
+model CertificateType {
+  id   String @id @default(cuid())
+  code String @unique
+  name String // SSLC, Plus Two, Degree Certificate, TC, Migration
+  // Originals of this type are collected from the student and must be
+  // tracked back to them - drives the Return Certificate screen.
+  isOriginalCollected Boolean @default(true)
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  studentEducations  StudentEducation[]
+  certificateCustody CertificateCustody[]
+
+  @@map("certificate_types")
+}
+
+model ExamCentre {
+  id           String    @id @default(cuid())
+  code         String    @unique
+  name         String
+  addressLine1 String?
+  city         String?
+  contactPhone String?
+  archivedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  examSchedules ExamSchedule[]
+
+  @@map("exam_centres")
+}
+
+// Covers vendor masters #14 "Second Language" and #16 "Medium" - the same
+// list of languages used in two places, flagged by usage.
+model Language {
+  id              String    @id @default(cuid())
+  name            String    @unique // Tamil, English, Malayalam, Hindi
+  usableAsMedium  Boolean   @default(true)
+  usableAsSecond  Boolean   @default(true)
+  archivedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  studentsAsMedium   Student[] @relation("StudentMedium")
+  studentsAsSecond   Student[] @relation("StudentSecondLanguage")
+  employeeSkills     EmployeeLanguageSkill[]
+
+  @@map("languages")
+}
+
+// ===========================================================================
+// SECTION 3 - Enquiry module (lead -> counselling -> admission)
+// ===========================================================================
+
+model EnquirySource {
+  id         String    @id @default(cuid())
+  name       String    @unique // Direct, News Paper, Web Site, C/O, Friends
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  leads     EnquiryLead[]
+  enquiries Enquiry[]
+
+  @@map("enquiry_sources")
+}
+
+model EnquiryCallStatus {
+  id         String    @id @default(cuid())
+  name       String    @unique // Call Later, Attended, Not Interested
+  // Drives the Call Schedule screens: does this outcome require a next call?
+  requiresFollowUp Boolean @default(true)
+  isTerminal       Boolean @default(false) // Not Interested / Converted
+  colour           String? // badge tint, hex
+  sortOrder        Int     @default(0)
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  leads     EnquiryLead[]
+  enquiries Enquiry[]
+  followUps EnquiryFollowUp[]
+
+  @@map("enquiry_call_statuses")
+}
+
+// Tracks a bulk upload so a bad import can be identified and rolled back.
+model LeadImportBatch {
+  id           String   @id @default(cuid())
+  branchId     String
+  fileName     String
+  totalRows    Int      @default(0)
+  importedRows Int      @default(0)
+  skippedRows  Int      @default(0)
+  errorReport  Json?
+  importedById String?
+  createdAt    DateTime @default(now())
+
+  branch Branch        @relation(fields: [branchId], references: [id])
+  leads  EnquiryLead[]
+
+  @@map("lead_import_batches")
+}
+
+// Raw lead, typically bulk-loaded from social media / listing sites.
+// Deliberately permissive: only a contact number is required.
+model EnquiryLead {
+  id          String  @id @default(cuid())
+  branchId    String
+  name        String
+  phone       String
+  altPhone    String?
+  email       String?
+  city        String?
+  courseId    String?
+  sourceId    String?
+  callStatusId String?
+  assignedToId String?
+  importBatchId String?
+
+  notes       String?
+  nextCallAt  DateTime?
+  lastCalledAt DateTime?
+  callCount   Int      @default(0)
+
+  // Set when the lead is promoted to a qualified Enquiry.
+  convertedEnquiryId String?  @unique
+  convertedAt        DateTime?
+
+  isDuplicate Boolean   @default(false)
+  archivedAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  branch      Branch             @relation(fields: [branchId], references: [id])
+  course      Course?            @relation(fields: [courseId], references: [id])
+  source      EnquirySource?     @relation(fields: [sourceId], references: [id])
+  callStatus  EnquiryCallStatus? @relation(fields: [callStatusId], references: [id])
+  assignedTo  User?              @relation("LeadAssignee", fields: [assignedToId], references: [id])
+  importBatch LeadImportBatch?   @relation(fields: [importBatchId], references: [id])
+  convertedEnquiry Enquiry?      @relation("LeadToEnquiry", fields: [convertedEnquiryId], references: [id])
+
+  followUps EnquiryFollowUp[]
+
+  // Bulk imports dedupe on branch+phone.
+  @@unique([branchId, phone])
+  @@index([branchId, nextCallAt])
+  @@index([assignedToId])
+  @@map("enquiry_leads")
+}
+
+enum EnquiryStage {
+  NEW
+  CONTACTED
+  COUNSELLING_SCHEDULED
+  COUNSELLING_COMPLETED
+  CONVERTED
+  LOST
+}
+
+// A qualified enquiry being followed all the way to admission.
+model Enquiry {
+  id           String       @id @default(cuid())
+  branchId     String
+  enquiryNo    String
+  name         String
+  phone        String
+  altPhone     String?
+  email        String?
+  addressLine1 String?
+  city         String?
+  courseId     String?
+  sourceId     String?
+  callStatusId String?
+  assignedToId String?
+
+  stage        EnquiryStage @default(NEW)
+  nextCallAt   DateTime?
+  lastCalledAt DateTime?
+  callCount    Int          @default(0)
+
+  counsellingScheduledAt DateTime?
+  counsellingCompletedAt DateTime?
+  counsellingRemarks     String?
+
+  lostReason String?
+
+  // Set on conversion to an admission.
+  studentId  String?   @unique
+  convertedAt DateTime?
+
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  branch     Branch             @relation(fields: [branchId], references: [id])
+  course     Course?            @relation(fields: [courseId], references: [id])
+  source     EnquirySource?     @relation(fields: [sourceId], references: [id])
+  callStatus EnquiryCallStatus? @relation(fields: [callStatusId], references: [id])
+  assignedTo User?              @relation("EnquiryAssignee", fields: [assignedToId], references: [id])
+  student    Student?           @relation(fields: [studentId], references: [id])
+
+  originLead EnquiryLead?      @relation("LeadToEnquiry")
+  followUps  EnquiryFollowUp[]
+
+  @@unique([branchId, enquiryNo])
+  @@index([branchId, stage])
+  @@index([branchId, nextCallAt])
+  @@map("enquiries")
+}
+
+// One row per call attempt, against a lead or an enquiry. This single table
+// feeds Call Schedule, Counselling Call Schedule and Counselling Completed
+// Call Schedule - see ADR-004 (three vendor screens collapse to one).
+model EnquiryFollowUp {
+  id           String  @id @default(cuid())
+  leadId       String?
+  enquiryId    String?
+  callStatusId String?
+  calledById   String?
+
+  calledAt   DateTime  @default(now())
+  outcome    String?
+  remarks    String?
+  nextCallAt DateTime?
+
+  // Snapshot of the stage this call moved the enquiry to, for funnel reporting.
+  stageAfter EnquiryStage?
+
+  createdAt DateTime @default(now())
+
+  lead       EnquiryLead?       @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  enquiry    Enquiry?           @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+  callStatus EnquiryCallStatus? @relation(fields: [callStatusId], references: [id])
+  calledBy   User?              @relation(fields: [calledById], references: [id])
+
+  @@index([leadId])
+  @@index([enquiryId])
+  @@index([nextCallAt])
+  @@map("enquiry_follow_ups")
+}
+
+// ===========================================================================
+// SECTION 4 - Application: the student record and its lifecycle
+// ===========================================================================
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum StudentStatus {
+  APPLIED
+  ADMITTED
+  ACTIVE
+  PROMOTED
+  COMPLETED
+  TRANSFERRED
+  DROPPED
+  CANCELLED
+}
+
+model Student {
+  id        String @id @default(cuid())
+  branchId  String
+
+  // Three distinct identifiers the scope calls for. Application number is
+  // ours; the other two arrive later from the university and so are nullable.
+  applicationNo         String
+  admissionNo           String?
+  enrolmentNumber       String?
+  examRegistrationNumber String?
+
+  // --- Personal details ---
+  firstName   String
+  lastName    String?
+  dateOfBirth DateTime?
+  gender      Gender?
+  photoPath   String?
+  phone       String?
+  altPhone    String?
+  email       String?
+  aadhaarLast4 String? // never store the full Aadhaar - see ADR-006
+  religionId  String?
+  category    String? // General/OBC/SC/ST - required by most universities
+  bloodGroup  String?
+
+  addressLine1 String?
+  addressLine2 String?
+  city         String?
+  state        String?
+  pincode      String?
+
+  // --- Academic placement ---
+  courseId          String
+  batchId           String
+  classModeId       String?
+  affiliationBodyId String?
+  mediumId          String?
+  secondLanguageId  String?
+  courseYear        Int     @default(1)
+
+  admissionDate DateTime?
+  status        StudentStatus @default(APPLIED)
+  statusReason  String?
+
+  archivedAt DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  branch          Branch           @relation(fields: [branchId], references: [id])
+  course          Course           @relation(fields: [courseId], references: [id])
+  batch           Batch            @relation(fields: [batchId], references: [id])
+  classMode       ClassMode?       @relation(fields: [classModeId], references: [id])
+  religion        Religion?        @relation(fields: [religionId], references: [id])
+  affiliationBody AffiliationBody? @relation(fields: [affiliationBodyId], references: [id])
+  medium          Language?        @relation("StudentMedium", fields: [mediumId], references: [id])
+  secondLanguage  Language?        @relation("StudentSecondLanguage", fields: [secondLanguageId], references: [id])
+
+  enquiry           Enquiry?
+  guardians         StudentGuardian[]
+  educations        StudentEducation[]
+  documents         StudentDocument[]
+  feeAssignments    StudentFeeAssignment[]
+  installments      FeeInstallment[]
+  concessions       FeeConcession[]
+  payments          Payment[]
+  refunds           FeeRefund[]
+  rollNumbers       RollNumber[]
+  idCards           StudentIdCard[]
+  certificateCustody CertificateCustody[]
+  examResults       ExamResult[]
+  transferCertificates TransferCertificate[]
+  completionCertificates CourseCompletionCertificate[]
+  courseTransfers   CourseTransfer[]
+  promotions        StudentPromotion[]
+  materialIssues    StudyMaterialIssue[]
+  notifications     NotificationLog[]
+
+  @@unique([branchId, applicationNo])
+  @@unique([branchId, admissionNo])
+  @@index([branchId, status])
+  @@index([courseId, batchId, courseYear])
+  @@index([firstName, lastName])
+  @@map("students")
+}
+
+// "Family Details" in the vendor scope - modelled as 0..n guardians rather
+// than fixed father/mother columns, because single-guardian and
+// guardian-other-than-parent cases are common.
+model StudentGuardian {
+  id           String  @id @default(cuid())
+  studentId    String
+  relation     String // Father, Mother, Guardian
+  name         String
+  occupation   String?
+  phone        String?
+  email        String?
+  annualIncomePaise Int?
+  isPrimaryContact Boolean @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([studentId])
+  @@map("student_guardians")
+}
+
+// Prior qualifications. Where an ORIGINAL certificate was collected, a
+// CertificateCustody row is opened against this record.
+model StudentEducation {
+  id                String @id @default(cuid())
+  studentId         String
+  certificateTypeId String?
+  qualification     String // SSLC, Plus Two, Degree
+  boardOrUniversity String?
+  institution       String?
+  yearOfPassing     Int?
+  registerNumber    String?
+  marksPercentage   Decimal? @db.Decimal(5, 2)
+
+  originalCollected   Boolean @default(false)
+  originalCollectedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  student         Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  certificateType CertificateType? @relation(fields: [certificateTypeId], references: [id])
+  custody         CertificateCustody[]
+
+  @@index([studentId])
+  @@map("student_educations")
+}
+
+model StudentDocument {
+  id        String   @id @default(cuid())
+  studentId String
+  label     String
+  filePath  String
+  mimeType  String?
+  sizeBytes Int?
+  uploadedById String?
+  createdAt DateTime @default(now())
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([studentId])
+  @@map("student_documents")
+}
+
+// ---------------------------------------------------------------------------
+// Return Certificate - custody of students' ORIGINAL documents.
+// The highest legal-risk area in the whole system; the vendor scope gave it
+// four lines. Modelled as a custody record plus an append-only event log so
+// the institute can always answer "where is this student's SSLC original?".
+// ---------------------------------------------------------------------------
+
+enum CustodyStatus {
+  WITH_INSTITUTE
+  SENT_FOR_VERIFICATION
+  RETURNED_FROM_AFFILIATION
+  RETURNED_TO_STUDENT
+  LOST
+}
+
+model CertificateCustody {
+  id                 String  @id @default(cuid())
+  studentId          String
+  studentEducationId String?
+  certificateTypeId  String
+  affiliationBodyId  String?
+
+  status        CustodyStatus @default(WITH_INSTITUTE)
+  collectedAt   DateTime?
+  sentAt        DateTime?
+  returnedAt    DateTime?
+  handedBackAt  DateTime?
+  // Signed acknowledgement from the student on hand-back.
+  acknowledgementPath String?
+  remarks       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  student          Student           @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentEducation StudentEducation? @relation(fields: [studentEducationId], references: [id])
+  certificateType  CertificateType   @relation(fields: [certificateTypeId], references: [id])
+  affiliationBody  AffiliationBody?  @relation(fields: [affiliationBodyId], references: [id])
+
+  events CertificateCustodyEvent[]
+
+  @@index([studentId])
+  @@index([status])
+  @@map("certificate_custody")
+}
+
+model CertificateCustodyEvent {
+  id        String        @id @default(cuid())
+  custodyId String
+  fromStatus CustodyStatus?
+  toStatus  CustodyStatus
+  occurredAt DateTime     @default(now())
+  handledById String?
+  remarks   String?
+  createdAt DateTime      @default(now())
+
+  custody CertificateCustody @relation(fields: [custodyId], references: [id], onDelete: Cascade)
+
+  @@index([custodyId])
+  @@map("certificate_custody_events")
+}
+
+// ---------------------------------------------------------------------------
+// Sections and roll numbers
+// ---------------------------------------------------------------------------
+
+model ClassSection {
+  id         String @id @default(cuid())
+  branchId   String
+  courseId   String
+  batchId    String
+  courseYear Int
+  name       String // "A", "B"
+  capacity   Int?
+  archivedAt DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  branch Branch @relation(fields: [branchId], references: [id])
+  course Course @relation(fields: [courseId], references: [id])
+  batch  Batch  @relation(fields: [batchId], references: [id])
+
+  rollNumbers RollNumber[]
+
+  @@unique([branchId, courseId, batchId, courseYear, name])
+  @@map("class_sections")
+}
+
+model RollNumber {
+  id        String @id @default(cuid())
+  studentId String
+  sectionId String
+  courseYear Int
+  rollNo    Int
+  // Set when a student is dropped and the number is freed for reallocation.
+  releasedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  student Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  section ClassSection @relation(fields: [sectionId], references: [id])
+
+  @@unique([sectionId, rollNo, courseYear])
+  @@index([studentId])
+  @@map("roll_numbers")
+}
+
+// ---------------------------------------------------------------------------
+// ID cards, TCs, completion certificates, transfers, promotions, materials
+// ---------------------------------------------------------------------------
+
+enum IdCardStatus {
+  REQUESTED
+  SENT_TO_AFFILIATION
+  RECEIVED
+  STUDENT_NOTIFIED
+  COLLECTED
+}
+
+model StudentIdCard {
+  id         String       @id @default(cuid())
+  studentId  String
+  cardNumber String?
+  status     IdCardStatus @default(REQUESTED)
+  requestedAt DateTime    @default(now())
+  receivedAt  DateTime?
+  notifiedAt  DateTime?
+  collectedAt DateTime?
+  validUpto   DateTime?
+  remarks     String?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([studentId])
+  @@index([status])
+  @@map("student_id_cards")
+}
+
+model TransferCertificate {
+  id          String   @id @default(cuid())
+  studentId   String
+  tcNumber    String   @unique
+  issuedAt    DateTime @default(now())
+  reason      String?
+  conductRemark String?
+  issuedById  String?
+  // Tracks the "given to student" half of the requirement.
+  handedOverAt DateTime?
+  receivedBy   String?
+  documentPath String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([studentId])
+  @@map("transfer_certificates")
+}
+
+model CourseCompletionCertificate {
+  id             String   @id @default(cuid())
+  studentId      String
+  certificateNo  String   @unique
+  completionDate DateTime
+  grade          String?
+  issuedAt       DateTime?
+  handedOverAt   DateTime?
+  documentPath   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([studentId])
+  @@map("course_completion_certificates")
+}
+
+model CourseTransfer {
+  id           String   @id @default(cuid())
+  studentId    String
+  fromCourseId String
+  toCourseId   String
+  transferDate DateTime @default(now())
+  reason       String?
+  // Fee implications are explicit rather than implied.
+  feeAdjustmentPaise Int  @default(0)
+  approvedById String?
+  createdAt    DateTime @default(now())
+
+  student    Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  fromCourse Course  @relation("TransferFromCourse", fields: [fromCourseId], references: [id])
+  toCourse   Course  @relation("TransferToCourse", fields: [toCourseId], references: [id])
+
+  @@index([studentId])
+  @@map("course_transfers")
+}
+
+model StudentPromotion {
+  id         String   @id @default(cuid())
+  studentId  String
+  fromYear   Int
+  toYear     Int
+  batchId    String?
+  promotedAt DateTime @default(now())
+  promotedById String?
+  remarks    String?
+  createdAt  DateTime @default(now())
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([studentId])
+  @@map("student_promotions")
+}
+
+model StudyMaterialIssue {
+  id         String    @id @default(cuid())
+  studentId  String
+  materialId String
+  quantity   Int       @default(1)
+  issuedAt   DateTime  @default(now())
+  issuedById String?
+  returnedAt DateTime?
+  remarks    String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  student  Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  material StudyMaterial @relation(fields: [materialId], references: [id])
+
+  @@index([studentId])
+  @@index([materialId])
+  @@map("study_material_issues")
+}
+
+// ---------------------------------------------------------------------------
+// Examinations
+// ---------------------------------------------------------------------------
+
+enum ExamTerm {
+  MID_TERM
+  ANNUAL
+  SUPPLEMENTARY
+  AFFILIATION
+}
+
+model ExamSchedule {
+  id           String   @id @default(cuid())
+  branchId     String
+  name         String
+  courseId     String
+  batchId      String?
+  courseYear   Int
+  term         ExamTerm
+  examCentreId String?
+  startDate    DateTime
+  endDate      DateTime
+  isPublished  Boolean  @default(false)
+  archivedAt   DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  branch     Branch      @relation(fields: [branchId], references: [id])
+  course     Course      @relation(fields: [courseId], references: [id])
+  batch      Batch?      @relation(fields: [batchId], references: [id])
+  examCentre ExamCentre? @relation(fields: [examCentreId], references: [id])
+
+  subjects ExamScheduleSubject[]
+  results  ExamResult[]
+
+  @@index([branchId, startDate])
+  @@map("exam_schedules")
+}
+
+model ExamScheduleSubject {
+  id         String   @id @default(cuid())
+  scheduleId String
+  subjectId  String
+  examDate   DateTime
+  startTime  String? // "10:00"
+  endTime    String?
+  maxMarks   Int      @default(100)
+  createdAt  DateTime @default(now())
+
+  schedule ExamSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  subject  Subject      @relation(fields: [subjectId], references: [id])
+
+  @@unique([scheduleId, subjectId])
+  @@map("exam_schedule_subjects")
+}
+
+enum ResultStatus {
+  PASS
+  FAIL
+  WITHHELD
+  ABSENT
+}
+
+model ExamResult {
+  id         String       @id @default(cuid())
+  scheduleId String
+  studentId  String
+  totalMarks Int          @default(0)
+  maxMarks   Int          @default(0)
+  percentage Decimal?     @db.Decimal(5, 2)
+  grade      String?
+  status     ResultStatus @default(PASS)
+  publishedAt DateTime?
+  remarks    String?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  schedule ExamSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  student  Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  subjects ExamResultSubject[]
+
+  @@unique([scheduleId, studentId])
+  @@index([studentId])
+  @@map("exam_results")
+}
+
+model ExamResultSubject {
+  id        String  @id @default(cuid())
+  resultId  String
+  subjectId String
+  marks     Int?
+  maxMarks  Int     @default(100)
+  grade     String?
+  isAbsent  Boolean @default(false)
+  createdAt DateTime @default(now())
+
+  result  ExamResult @relation(fields: [resultId], references: [id], onDelete: Cascade)
+  subject Subject    @relation(fields: [subjectId], references: [id])
+
+  @@unique([resultId, subjectId])
+  @@map("exam_result_subjects")
+}
+
+// ===========================================================================
+// SECTION 5 - Fee engine
+// ===========================================================================
+// The vendor scope described fees as a single screen ("Fees can be Application
+// Fee, Course/Tuition Fee, Examination Fee, etc."). In practice this is the
+// hardest part of an institute system, so it is modelled properly:
+//   FeeStructure -> StudentFeeAssignment -> FeeInstallment
+//                                              ^
+//            Payment -> PaymentAllocation ----/
+//   with FeeConcession and FeeRefund as explicit, auditable adjustments.
+// Invariant: an installment's duePaise is never mutated by a payment. What is
+// owed and what is paid are separate facts; balance is always derived.
+// ===========================================================================
+
+model FeeStructure {
+  id          String  @id @default(cuid())
+  name        String
+  branchId    String?
+  courseId    String
+  batchId     String?
+  classModeId String?
+  courseYear  Int     @default(1)
+
+  // Late-fee policy, absent from the vendor scope entirely.
+  graceDays        Int @default(0)
+  lateFeePerDayPaise Int @default(0)
+  lateFeeMaxPaise    Int @default(0)
+
+  isActive   Boolean   @default(true)
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  branch    Branch?    @relation(fields: [branchId], references: [id])
+  course    Course     @relation(fields: [courseId], references: [id])
+  batch     Batch?     @relation(fields: [batchId], references: [id])
+  classMode ClassMode? @relation(fields: [classModeId], references: [id])
+
+  items       FeeStructureItem[]
+  assignments StudentFeeAssignment[]
+
+  @@index([courseId, batchId, courseYear])
+  @@map("fee_structures")
+}
+
+model FeeStructureItem {
+  id          String @id @default(cuid())
+  structureId String
+  feeTypeId   String
+  amountPaise Int
+  // Instalment 1..n; items sharing a number fall due together.
+  installmentNo Int    @default(1)
+  // Days after admission date when this instalment falls due. Null = use
+  // dueDate below (a fixed calendar date, e.g. a university deadline).
+  dueAfterDays Int?
+  dueDate      DateTime?
+  isMandatory  Boolean @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  structure FeeStructure @relation(fields: [structureId], references: [id], onDelete: Cascade)
+  feeType   FeeType      @relation(fields: [feeTypeId], references: [id])
+
+  @@index([structureId])
+  @@map("fee_structure_items")
+}
+
+model StudentFeeAssignment {
+  id          String   @id @default(cuid())
+  studentId   String
+  structureId String
+  assignedAt  DateTime @default(now())
+  assignedById String?
+  // Snapshot of the structure total at assignment time, so later edits to the
+  // master do not silently rewrite history.
+  totalPaise  Int      @default(0)
+  remarks     String?
+  createdAt   DateTime @default(now())
+
+  student   Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  structure FeeStructure @relation(fields: [structureId], references: [id])
+
+  @@unique([studentId, structureId])
+  @@map("student_fee_assignments")
+}
+
+enum InstallmentStatus {
+  PENDING
+  PARTIALLY_PAID
+  PAID
+  WAIVED
+  OVERDUE
+}
+
+// One concrete amount owed by one student, due on one date.
+model FeeInstallment {
+  id         String @id @default(cuid())
+  studentId  String
+  feeTypeId  String
+  label      String
+  installmentNo Int   @default(1)
+
+  dueDate    DateTime
+  duePaise   Int // never mutated by payments
+  concessionPaise Int @default(0)
+  lateFeePaise    Int @default(0)
+  paidPaise       Int @default(0) // maintained by PaymentAllocation writes
+
+  status     InstallmentStatus @default(PENDING)
+  waivedReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  feeType FeeType @relation(fields: [feeTypeId], references: [id])
+
+  allocations PaymentAllocation[]
+  concessions FeeConcession[]
+
+  @@index([studentId, status])
+  @@index([dueDate, status])
+  @@map("fee_installments")
+}
+
+enum ConcessionKind {
+  SCHOLARSHIP
+  SIBLING
+  STAFF_WARD
+  MERIT
+  MANAGEMENT
+  OTHER
+}
+
+// Discounts are a separate, approved, auditable record - never a silent edit
+// of the amount due.
+model FeeConcession {
+  id            String         @id @default(cuid())
+  studentId     String
+  installmentId String?
+  kind          ConcessionKind @default(OTHER)
+  amountPaise   Int
+  reason        String
+  approvedById  String?
+  approvedAt    DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  student     Student         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  installment FeeInstallment? @relation(fields: [installmentId], references: [id])
+  approvedBy  User?           @relation("ConcessionApprovedBy", fields: [approvedById], references: [id])
+
+  @@index([studentId])
+  @@map("fee_concessions")
+}
+
+enum PaymentMode {
+  CASH
+  UPI
+  CARD
+  NET_BANKING
+  CHEQUE
+  DD
+  BANK_TRANSFER
+}
+
+enum PaymentStatus {
+  COMPLETED
+  BOUNCED
+  CANCELLED
+}
+
+// A receipt. One payment may settle several instalments via PaymentAllocation.
+model Payment {
+  id        String @id @default(cuid())
+  branchId  String
+  studentId String
+
+  receiptNo   String
+  receiptDate DateTime @default(now())
+  amountPaise Int
+  mode        PaymentMode @default(CASH)
+  status      PaymentStatus @default(COMPLETED)
+
+  referenceNo   String? // UPI ref / cheque no / DD no
+  bankAccountId String?
+  chequeDate    DateTime?
+  bouncedAt     DateTime?
+  cancelledAt   DateTime?
+  cancelReason  String?
+
+  collectedById String?
+  remarks       String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  branch      Branch       @relation(fields: [branchId], references: [id])
+  student     Student      @relation(fields: [studentId], references: [id])
+  bankAccount BankAccount? @relation(fields: [bankAccountId], references: [id])
+  collectedBy User?        @relation("PaymentCollectedBy", fields: [collectedById], references: [id])
+
+  allocations   PaymentAllocation[]
+  refunds       FeeRefund[]
+  ledgerEntries LedgerEntry[]
+
+  @@unique([branchId, receiptNo])
+  @@index([branchId, receiptDate])
+  @@index([studentId])
+  @@map("payments")
+}
+
+model PaymentAllocation {
+  id            String @id @default(cuid())
+  paymentId     String
+  installmentId String
+  amountPaise   Int
+  createdAt     DateTime @default(now())
+
+  payment     Payment        @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  installment FeeInstallment @relation(fields: [installmentId], references: [id])
+
+  @@unique([paymentId, installmentId])
+  @@index([installmentId])
+  @@map("payment_allocations")
+}
+
+model FeeRefund {
+  id          String   @id @default(cuid())
+  studentId   String
+  paymentId   String?
+  amountPaise Int
+  reason      String
+  refundedAt  DateTime @default(now())
+  mode        PaymentMode @default(CASH)
+  referenceNo String?
+  approvedById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  student Student  @relation(fields: [studentId], references: [id])
+  payment Payment? @relation(fields: [paymentId], references: [id])
+
+  ledgerEntries LedgerEntry[]
+
+  @@index([studentId])
+  @@map("fee_refunds")
+}
+
+// Per-branch, per-financial-year receipt numbering. A DB-level unique counter
+// is the only safe way to avoid duplicate receipt numbers under concurrency.
+model ReceiptSequence {
+  id          String @id @default(cuid())
+  branchId    String
+  financialYear String // "2026-27"
+  prefix      String  @default("RC")
+  lastNumber  Int     @default(0)
+  updatedAt   DateTime @updatedAt
+
+  branch Branch @relation(fields: [branchId], references: [id])
+
+  @@unique([branchId, financialYear])
+  @@map("receipt_sequences")
+}
+
+// ===========================================================================
+// SECTION 6 - Accounts
+// ===========================================================================
+
+enum AccountHeadKind {
+  INCOME
+  EXPENSE
+}
+
+model AccountHead {
+  id         String          @id @default(cuid())
+  code       String          @unique
+  name       String // Salary, Rent, Donation, Stationary, Travel Expenses
+  kind       AccountHeadKind
+  archivedAt DateTime?
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+
+  feeTypes          FeeType[]
+  dailyTransactions DailyTransaction[]
+  ledgerEntries     LedgerEntry[]
+
+  @@map("account_heads")
+}
+
+model BankAccount {
+  id            String  @id @default(cuid())
+  accountName   String
+  bankName      String
+  branchName    String?
+  accountNumber String
+  ifsc          String?
+  openingBalancePaise Int @default(0)
+  isActive      Boolean @default(true)
+  archivedAt    DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  payments            Payment[]
+  dailyTransactions   DailyTransaction[]
+  affiliationPayments AffiliationPayment[]
+  ledgerEntries       LedgerEntry[]
+
+  @@unique([bankName, accountNumber])
+  @@map("bank_accounts")
+}
+
+model DailyTransaction {
+  id            String          @id @default(cuid())
+  branchId      String
+  voucherNo     String
+  transactionDate DateTime      @default(now())
+  kind          AccountHeadKind
+  accountHeadId String
+  amountPaise   Int
+  mode          PaymentMode     @default(CASH)
+  bankAccountId String?
+  referenceNo   String?
+  narration     String?
+  enteredById   String?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  branch      Branch       @relation(fields: [branchId], references: [id])
+  accountHead AccountHead  @relation(fields: [accountHeadId], references: [id])
+  bankAccount BankAccount? @relation(fields: [bankAccountId], references: [id])
+
+  ledgerEntries LedgerEntry[]
+
+  @@unique([branchId, voucherNo])
+  @@index([branchId, transactionDate])
+  @@map("daily_transactions")
+}
+
+// Amounts owed onward to the affiliating university, reconciled against what
+// was collected from students under the same fee type.
+model AffiliationPayment {
+  id                String   @id @default(cuid())
+  branchId          String
+  affiliationBodyId String
+  feeTypeId         String?
+  referenceNo       String?
+  paidOn            DateTime @default(now())
+  amountPaise       Int
+  mode              PaymentMode @default(BANK_TRANSFER)
+  bankAccountId     String?
+  // Free-text list or count of students this remittance covers; the detailed
+  // reconciliation is derived from Payments of the same fee type.
+  studentCount      Int?
+  narration         String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  branch          Branch          @relation(fields: [branchId], references: [id])
+  affiliationBody AffiliationBody @relation(fields: [affiliationBodyId], references: [id])
+  feeType         FeeType?        @relation(fields: [feeTypeId], references: [id])
+  bankAccount     BankAccount?    @relation(fields: [bankAccountId], references: [id])
+
+  ledgerEntries LedgerEntry[]
+
+  @@index([branchId, paidOn])
+  @@map("affiliation_payments")
+}
+
+enum LedgerSource {
+  FEE_PAYMENT
+  FEE_REFUND
+  DAILY_TRANSACTION
+  AFFILIATION_PAYMENT
+  OPENING_BALANCE
+  ADJUSTMENT
+}
+
+// Single posting journal. EVERY money movement lands here - fee receipts,
+// refunds, daily income/expense and affiliation remittances - so the Day Book
+// is one query and actually ties to the fee register.
+// This closes the vendor scope's biggest hole: it never said whether fee
+// collection reaches Accounts at all (see ADR-003).
+model LedgerEntry {
+  id            String       @id @default(cuid())
+  branchId      String
+  entryDate     DateTime
+  source        LedgerSource
+  accountHeadId String?
+  bankAccountId String?
+
+  // Signed convention: debit = money in, credit = money out.
+  debitPaise  Int @default(0)
+  creditPaise Int @default(0)
+
+  narration String?
+
+  paymentId            String?
+  refundId             String?
+  dailyTransactionId   String?
+  affiliationPaymentId String?
+
+  createdAt DateTime @default(now())
+
+  branch             Branch              @relation(fields: [branchId], references: [id])
+  accountHead        AccountHead?        @relation(fields: [accountHeadId], references: [id])
+  bankAccount        BankAccount?        @relation(fields: [bankAccountId], references: [id])
+  payment            Payment?            @relation(fields: [paymentId], references: [id])
+  refund             FeeRefund?          @relation(fields: [refundId], references: [id])
+  dailyTransaction   DailyTransaction?   @relation(fields: [dailyTransactionId], references: [id])
+  affiliationPayment AffiliationPayment? @relation(fields: [affiliationPaymentId], references: [id])
+
+  @@index([branchId, entryDate])
+  @@index([source])
+  @@map("ledger_entries")
+}
+
+// ===========================================================================
+// SECTION 7 - Employees
+// ===========================================================================
+// NOTE: the vendor scope's Employee intro promised "Salary Details, Work
+// Schedule" but listed no screens for them. Payroll and attendance are
+// therefore OUT of scope here and are tracked in docs/open-questions.md.
+// ===========================================================================
+
+enum EmploymentStatus {
+  ACTIVE
+  ON_LEAVE
+  RESIGNED
+  TERMINATED
+}
+
+model Employee {
+  id           String @id @default(cuid())
+  branchId     String
+  employeeCode String
+
+  firstName   String
+  lastName    String?
+  dateOfBirth DateTime?
+  gender      Gender?
+  photoPath   String?
+
+  phone        String?
+  altPhone     String?
+  email        String?
+  addressLine1 String?
+  city         String?
+  state        String?
+  pincode      String?
+
+  departmentId String?
+  designation  String?
+  dateOfJoining DateTime?
+  dateOfLeaving DateTime?
+  status       EmploymentStatus @default(ACTIVE)
+
+  archivedAt DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  branch     Branch      @relation(fields: [branchId], references: [id])
+  department Department? @relation(fields: [departmentId], references: [id])
+
+  user        User?
+  educations  EmployeeEducation[]
+  experiences EmployeeExperience[]
+  languages   EmployeeLanguageSkill[]
+
+  @@unique([branchId, employeeCode])
+  @@index([branchId, status])
+  @@map("employees")
+}
+
+model EmployeeEducation {
+  id            String @id @default(cuid())
+  employeeId    String
+  qualification String
+  institution   String?
+  boardOrUniversity String?
+  yearOfPassing Int?
+  marksPercentage Decimal? @db.Decimal(5, 2)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+  @@map("employee_educations")
+}
+
+model EmployeeExperience {
+  id           String   @id @default(cuid())
+  employeeId   String
+  organisation String
+  designation  String?
+  fromDate     DateTime?
+  toDate       DateTime?
+  remarks      String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([employeeId])
+  @@map("employee_experiences")
+}
+
+enum LanguageProficiency {
+  BASIC
+  INTERMEDIATE
+  FLUENT
+  NATIVE
+}
+
+model EmployeeLanguageSkill {
+  id         String @id @default(cuid())
+  employeeId String
+  languageId String
+  canRead    Boolean @default(true)
+  canWrite   Boolean @default(true)
+  canSpeak   Boolean @default(true)
+  proficiency LanguageProficiency @default(INTERMEDIATE)
+  createdAt  DateTime @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  language Language @relation(fields: [languageId], references: [id])
+
+  @@unique([employeeId, languageId])
+  @@map("employee_language_skills")
+}
+
+// ===========================================================================
+// SECTION 8 - Notifications
+// ===========================================================================
+
+enum NotificationChannel {
+  EMAIL
+  SMS
+}
+
+enum NotificationStatus {
+  QUEUED
+  SENT
+  FAILED
+  SKIPPED
+}
+
+// Every Email/SMS the scope promises ("inform students regarding the arrival
+// of ID cards", fee reminders, result publication) is logged, because these
+// are billable and disputed after the fact.
+model NotificationLog {
+  id        String              @id @default(cuid())
+  channel   NotificationChannel
+  status    NotificationStatus  @default(QUEUED)
+  template  String
+  recipient String // email address or phone
+  subject   String?
+  body      String?
+  studentId String?
+  relatedType String?
+  relatedId   String?
+  providerRef String?
+  errorText   String?
+  sentAt    DateTime?
+  createdAt DateTime            @default(now())
+
+  student Student? @relation(fields: [studentId], references: [id], onDelete: SetNull)
+
+  @@index([studentId])
+  @@index([status, createdAt])
+  @@map("notification_logs")
+}
