@@ -286,3 +286,67 @@ A `stockTotal` of 0 means "not tracked" and skips the check.
 
 **Why.** If the register can disagree with the shelf, the "study material
 issue summary" report becomes fiction.
+
+---
+
+## ADR-020 — The Day Book derives its balances, and proves the identity on screen
+
+**Decision.** Opening balance is computed from the ledger (everything strictly
+before the window, as a SQL aggregate) rather than stored as a running total.
+The page renders the identity as a visible line:
+
+> Balanced: opening + receipts − payments = closing
+
+**Why.** A stored running balance drifts the moment anything is back-dated or
+corrected, and the drift is silent. Deriving it means there is one source of
+truth; printing the identity means a mismatch is visible to whoever is looking
+at the book, not discovered at audit.
+
+**Verified.** The browser pass asserts the line reads "Balanced"; a SQL
+cross-check confirms the on-screen figures equal
+`sum(debit) − sum(credit)` per branch, and that **no ledger row exists without
+a source document** (payment, refund, voucher or remittance).
+
+---
+
+## ADR-021 — One numbering helper, separate series per document type
+
+**Context.** Fee receipts already had concurrency-safe numbering. Vouchers
+needed the same guarantee.
+
+**Decision.** `ReceiptSequence` gained a `series` discriminator
+(`RECEIPT` → RC, `VOUCHER` → VCH) and the logic moved to
+`src/lib/numbering.ts`, which both modules now call.
+
+**Why.** Each run must be gapless **on its own** — sharing one counter would
+make both series look full of holes. Two sequences, one implementation, so
+the atomic-increment-plus-retry behaviour cannot diverge between them.
+
+---
+
+## ADR-022 — An account head's type decides the direction of money
+
+**Decision.** `recordDailyTransaction` refuses an entry whose `kind`
+contradicts the chosen head's `kind`. The form only offers heads of the
+selected type, and the server enforces the same rule.
+
+**Why.** Otherwise a "Rent" voucher can be filed as income and the books are
+quietly wrong. The UI filter is a convenience; the server check is the
+guarantee.
+
+---
+
+## ADR-023 — Affiliation remittances reconcile against what students paid
+
+**Context.** The quotation had "Affiliation & Tie-Up Payment" as a bare entry
+screen, unconnected to fee collection, so nobody could answer "do we still
+owe the university money?".
+
+**Decision.** Fee types carry `isPayableToAffiliation`. The screen sums what
+students actually paid against those fee types and compares it with what has
+been remitted, per fee type.
+
+**Why.** That subtraction is the entire point of the screen. An
+over-remittance shows as a negative rather than being clamped to zero, and a
+remittance recorded without a fee type is called out separately as excluded
+from the reconciliation — both are anomalies worth seeing.

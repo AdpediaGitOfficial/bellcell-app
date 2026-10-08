@@ -1,11 +1,10 @@
 import 'server-only'
 import { Prisma, type PaymentMode } from '@prisma/client'
 import { db } from '@/lib/db'
+import { nextDocumentNo, withNumberRetry } from '@/lib/numbering'
 import {
   allocatePayment,
   deriveStatus,
-  financialYearFor,
-  formatReceiptNo,
   generateInstallments,
   type AllocatableInstallment,
 } from './core'
@@ -19,50 +18,13 @@ export class FeeError extends Error {
 
 type Tx = Prisma.TransactionClient
 
-/**
- * Allocate the next receipt number for a branch and financial year.
- *
- * MUST run inside the same transaction as the payment it numbers, otherwise a
- * failed payment burns a number and the series gains a hole the auditor will
- * ask about.
- *
- * The increment itself is atomic (Postgres row lock), so two cashiers taking
- * money at the same instant cannot be issued the same number. The only race
- * left is two concurrent *first* payments of a financial year both trying to
- * create the sequence row; that surfaces as a unique violation, which the
- * caller retries.
- */
+/** Fee receipts use the shared document numbering (src/lib/numbering.ts). */
 export async function nextReceiptNo(
   tx: Tx,
   branchId: string,
   date: Date,
 ): Promise<string> {
-  const financialYear = financialYearFor(date)
-
-  const seq = await tx.receiptSequence.upsert({
-    where: { branchId_financialYear: { branchId, financialYear } },
-    create: { branchId, financialYear, prefix: 'RC', lastNumber: 1 },
-    update: { lastNumber: { increment: 1 } },
-  })
-
-  return formatReceiptNo(seq.prefix, financialYear, seq.lastNumber)
-}
-
-/** Retry wrapper for the first-payment-of-the-year race described above. */
-async function withSequenceRetry<T>(fn: () => Promise<T>, attempts = 3): Promise<T> {
-  let lastError: unknown
-  for (let i = 0; i < attempts; i += 1) {
-    try {
-      return await fn()
-    } catch (error) {
-      lastError = error
-      const isRace =
-        error instanceof Prisma.PrismaClientKnownRequestError &&
-        (error.code === 'P2002' || error.code === 'P2034') // unique / write conflict
-      if (!isRace) throw error
-    }
-  }
-  throw lastError
+  return nextDocumentNo(tx, branchId, date, 'RECEIPT')
 }
 
 /**
@@ -186,7 +148,7 @@ export async function recordPayment(input: RecordPaymentInput): Promise<{
     throw new FeeError('Enter an amount greater than zero.')
   }
 
-  return withSequenceRetry(() =>
+  return withNumberRetry(() =>
     db.$transaction(async (tx) => {
       const rows = await tx.feeInstallment.findMany({
         where: { studentId: input.studentId, status: { not: 'WAIVED' } },

@@ -686,6 +686,105 @@ async function main() {
     console.log('  · 6 class sections')
   }
 
+  // ------------------------------------------------- accounts demo movement
+  if ((await db.dailyTransaction.count()) === 0) {
+    const expenseHeads = heads.filter((h) => h.kind === 'EXPENSE')
+    const incomeHeads = heads.filter((h) => h.kind === 'INCOME' && h.code !== 'AH-FEE')
+    const bank = await db.bankAccount.findFirst()
+
+    let voucherSeq = 0
+    for (let i = 0; i < 24; i += 1) {
+      const isIncome = rand() > 0.75
+      const head = isIncome ? pick(incomeHeads) : pick(expenseHeads)
+      if (!head) continue
+      voucherSeq += 1
+      const when = daysAgo(int(0, 28))
+      const amountPaise = isIncome ? int(50, 400) * 1000 : int(20, 250) * 1000
+
+      const txn = await db.dailyTransaction.create({
+        data: {
+          branchId: pick(branches).id,
+          voucherNo: `VCH/2026-27/${String(voucherSeq).padStart(4, '0')}`,
+          transactionDate: when,
+          kind: head.kind,
+          accountHeadId: head.id,
+          amountPaise,
+          mode: pick(['CASH', 'UPI', 'BANK_TRANSFER', 'CHEQUE'] as const),
+          bankAccountId: rand() > 0.5 ? (bank?.id ?? null) : null,
+          enteredById: accountant.id,
+          narration: `${head.name} — ${when.toLocaleDateString('en-IN', { month: 'long' })}`,
+        },
+      })
+
+      await db.ledgerEntry.create({
+        data: {
+          branchId: txn.branchId,
+          entryDate: when,
+          source: 'DAILY_TRANSACTION',
+          accountHeadId: head.id,
+          bankAccountId: txn.bankAccountId,
+          debitPaise: head.kind === 'INCOME' ? amountPaise : 0,
+          creditPaise: head.kind === 'EXPENSE' ? amountPaise : 0,
+          narration: `${txn.voucherNo} — ${head.name}`,
+          dailyTransactionId: txn.id,
+        },
+      })
+    }
+
+    // Keep the voucher counter in step with the rows we just inserted, so the
+    // first voucher saved through the UI does not collide with a seeded one.
+    await db.receiptSequence.upsert({
+      where: {
+        branchId_financialYear_series: {
+          branchId: main_.id,
+          financialYear: '2026-27',
+          series: 'VOUCHER',
+        },
+      },
+      create: {
+        branchId: main_.id,
+        financialYear: '2026-27',
+        series: 'VOUCHER',
+        prefix: 'VCH',
+        lastNumber: voucherSeq,
+      },
+      update: { lastNumber: voucherSeq },
+    })
+    console.log(`  · ${voucherSeq} daily transactions`)
+  }
+
+  if ((await db.affiliationPayment.count()) === 0) {
+    const univHead = heads.find((h) => h.code === 'AH-UNIV')
+    for (let i = 0; i < 3; i += 1) {
+      const when = daysAgo(int(5, 50))
+      const amountPaise = int(150, 600) * 1000
+      const payment = await db.affiliationPayment.create({
+        data: {
+          branchId: main_.id,
+          affiliationBodyId: calicut.id,
+          feeTypeId: i === 2 ? null : pick([examFee.id, feeTypes.find((f) => f.code === 'FT-AFF')!.id]),
+          amountPaise,
+          paidOn: when,
+          mode: 'BANK_TRANSFER',
+          referenceNo: `NEFT${int(100000, 999999)}`,
+          studentCount: int(10, 34),
+        },
+      })
+      await db.ledgerEntry.create({
+        data: {
+          branchId: main_.id,
+          entryDate: when,
+          source: 'AFFILIATION_PAYMENT',
+          accountHeadId: univHead?.id ?? null,
+          creditPaise: amountPaise,
+          narration: `Remittance to ${calicut.name}`,
+          affiliationPaymentId: payment.id,
+        },
+      })
+    }
+    console.log('  · 3 affiliation remittances')
+  }
+
   console.log('\nSeed complete.')
   console.log(`  Sign in with any of:`)
   for (const [email, , role] of userSpecs) {

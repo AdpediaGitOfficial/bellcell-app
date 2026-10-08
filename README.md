@@ -149,8 +149,18 @@ and concession caps.
 | Study Materials | Issue/return with stock that cannot go negative |
 | Promotion & Transfer | Bulk promotion (final-year students complete instead), course transfer with the fee consequence captured |
 
-**Next:** Examinations (schedule, results, TC and completion certificates),
-then Accounts (daily transactions, affiliation payments, Day Book).
+**Accounts — complete:**
+
+| Screen | What works |
+|---|---|
+| Daily Transactions | Income/expense vouchers with concurrency-safe numbering, reversal by contra entry, filters and period totals |
+| Affiliation Payments | University remittances reconciled against what students actually paid under payable fee types |
+| Day Book | Every rupee from every module, with opening/closing balances derived from the ledger and the identity proved on screen |
+| Masters | Account heads (type decides direction of money) and bank accounts |
+
+**Next:** Examinations — schedule, results, TC and completion certificates.
+Note that the quotation is thinnest here: it says "publish the result" with no
+mark entry, grade configuration or hall tickets (open question #10).
 
 Open questions for the institute are tracked in
 [`docs/open-questions.md`](docs/open-questions.md). Two of them —

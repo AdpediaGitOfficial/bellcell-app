@@ -60,8 +60,16 @@ const MASTERS: {
     group: 'Finance',
     items: [
       { label: 'Fee type', description: 'Application Fee, Exam Fee, Tuition Fee…' },
-      { label: 'Account head', description: 'Salary, Rent, Donation, Stationery…' },
-      { label: 'Bank account', description: 'Accounts money is received into' },
+      {
+        label: 'Account head',
+        href: '/masters/account-heads',
+        description: 'Salary, Rent, Donation, Stationery…',
+      },
+      {
+        label: 'Bank account',
+        href: '/masters/bank-accounts',
+        description: 'Accounts money is received into',
+      },
     ],
   },
   {

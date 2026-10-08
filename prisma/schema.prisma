@@ -1445,19 +1445,24 @@ model FeeRefund {
   @@map("fee_refunds")
 }
 
-// Per-branch, per-financial-year receipt numbering. A DB-level unique counter
-// is the only safe way to avoid duplicate receipt numbers under concurrency.
+// Per-branch, per-financial-year document numbering. A DB-level unique
+// counter is the only safe way to avoid duplicate numbers under concurrency.
+//
+// `series` separates the independent runs a branch keeps: fee receipts (RC)
+// and accounts vouchers (VCH) must each be gapless on their own, so they
+// cannot share one counter.
 model ReceiptSequence {
   id          String @id @default(cuid())
   branchId    String
   financialYear String // "2026-27"
+  series      String  @default("RECEIPT")
   prefix      String  @default("RC")
   lastNumber  Int     @default(0)
   updatedAt   DateTime @updatedAt
 
   branch Branch @relation(fields: [branchId], references: [id])
 
-  @@unique([branchId, financialYear])
+  @@unique([branchId, financialYear, series])
   @@map("receipt_sequences")
 }
 
