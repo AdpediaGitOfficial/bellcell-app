@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { Landmark } from 'lucide-react'
 import { db } from '@/lib/db'
-import { requireUser } from '@/lib/auth/current-user'
+import { requirePageUser } from '@/lib/auth/guard'
 import { can } from '@/lib/rbac/can'
 import { branchScope, needsBranchChoice } from '@/lib/branch'
 import { formatPaise } from '@/lib/money'
@@ -21,7 +21,7 @@ export const metadata: Metadata = { title: 'Affiliation Payments' }
  * answer: collected under a payable fee type, against remitted.
  */
 export default async function AffiliationPage() {
-  const user = await requireUser()
+  const user = await requirePageUser('accounts.affiliationPayment')
   const scope = branchScope(user)
 
   const [payments, bodies, payableFeeTypes, banks] = await Promise.all([

@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ArrowLeft, Printer } from 'lucide-react'
-import { requireUser } from '@/lib/auth/current-user'
+import { requirePageUser } from '@/lib/auth/guard'
 import { can } from '@/lib/rbac/can'
 import { db } from '@/lib/db'
 import { Card } from '@/components/ui/Card'
@@ -26,8 +26,7 @@ export default async function CustodyDetailPage({
 }: {
   params: Promise<{ id: string }>
 }) {
-  const user = await requireUser()
-  if (!can(user, 'admission.certificateCustody', 'view')) notFound()
+  const user = await requirePageUser('admission.certificateCustody')
 
   const { id } = await params
   const record = await getCustodyRecord(user, id)

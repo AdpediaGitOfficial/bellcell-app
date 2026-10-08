@@ -1,7 +1,7 @@
 import Link from 'next/link'
 import type { EnquiryStage } from '@prisma/client'
 import { MessagesSquare } from 'lucide-react'
-import { requireUser } from '@/lib/auth/current-user'
+import { requirePageUser } from '@/lib/auth/guard'
 import { can } from '@/lib/rbac/can'
 import type { Resource } from '@/lib/rbac/resources'
 import { parseTableParams, type SearchParams } from '@/lib/table/params'
@@ -92,7 +92,9 @@ export async function EnquiryScreen({
   emptyDescription: string
   summary?: React.ReactNode
 }) {
-  const user = await requireUser()
+  // Guarded here as well as in each route, because this component is what
+  // actually reads the data for three different resources.
+  const user = await requirePageUser(resource)
 
   const params = parseTableParams(searchParams, {
     allowedSorts: ENQUIRY_SORTS,

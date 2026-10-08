@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ArrowLeft, GraduationCap } from 'lucide-react'
 import { db } from '@/lib/db'
-import { requireUser } from '@/lib/auth/current-user'
+import { requirePageUser } from '@/lib/auth/guard'
 import { can } from '@/lib/rbac/can'
 import { branchScope } from '@/lib/branch'
 import { Card, CardHeader } from '@/components/ui/Card'
@@ -21,8 +21,7 @@ export default async function EnquiryDetailPage({
 }: {
   params: Promise<{ id: string }>
 }) {
-  const user = await requireUser()
-  if (!can(user, 'enquiry.enquiry', 'view')) notFound()
+  const user = await requirePageUser('enquiry.enquiry')
 
   const { id } = await params
 

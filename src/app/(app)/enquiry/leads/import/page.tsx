@@ -1,7 +1,5 @@
 import type { Metadata } from 'next'
-import { notFound } from 'next/navigation'
-import { requireUser } from '@/lib/auth/current-user'
-import { can } from '@/lib/rbac/can'
+import { requirePageUser } from '@/lib/auth/guard'
 import { needsBranchChoice } from '@/lib/branch'
 import { Card } from '@/components/ui/Card'
 import { PageHeader } from '@/components/shell/PageHeader'
@@ -11,8 +9,7 @@ import { leadFilterOptions } from '../queries'
 export const metadata: Metadata = { title: 'Import leads' }
 
 export default async function ImportLeadsPage() {
-  const user = await requireUser()
-  if (!can(user, 'enquiry.lead', 'create')) notFound()
+  const user = await requirePageUser('enquiry.lead', 'create')
 
   const { sources, counsellors } = await leadFilterOptions(user)
   const branches = needsBranchChoice(user) ? user.branches : undefined

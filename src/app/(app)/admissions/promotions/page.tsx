@@ -1,8 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
 import { db } from '@/lib/db'
-import { requireUser } from '@/lib/auth/current-user'
+import { requirePageUser } from '@/lib/auth/guard'
 import { can } from '@/lib/rbac/can'
 import { branchScope } from '@/lib/branch'
 import { formatPaise } from '@/lib/money'
@@ -23,8 +22,7 @@ export default async function PromotionsPage({
 }: {
   searchParams: Promise<SearchParams>
 }) {
-  const user = await requireUser()
-  if (!can(user, 'admission.promotion', 'view')) notFound()
+  const user = await requirePageUser('admission.promotion')
 
   const sp = await searchParams
   const tab = sp.tab === 'transfer' ? 'transfer' : 'promote'

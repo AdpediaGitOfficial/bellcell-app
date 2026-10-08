@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { requirePageUser } from '@/lib/auth/guard'
 import type { SearchParams } from '@/lib/table/params'
 import { EnquiryScreen } from '../enquiries/EnquiryScreen'
 import { OPEN_STAGES } from '../enquiries/queries'
@@ -14,6 +15,7 @@ export default async function CallSchedulePage({
 }: {
   searchParams: Promise<SearchParams>
 }) {
+  await requirePageUser('enquiry.callSchedule')
   const sp = await searchParams
 
   return (

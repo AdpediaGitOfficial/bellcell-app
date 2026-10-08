@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { requireUser } from '@/lib/auth/current-user'
+import { requirePageUser } from '@/lib/auth/guard'
 import type { SearchParams } from '@/lib/table/params'
 import { EnquiryScreen } from './EnquiryScreen'
 import { enquirySummary } from './queries'
@@ -14,7 +14,7 @@ export default async function EnquiriesPage({
 }: {
   searchParams: Promise<SearchParams>
 }) {
-  const user = await requireUser()
+  const user = await requirePageUser('enquiry.enquiry')
   const sp = await searchParams
   const s = await enquirySummary(user)
 

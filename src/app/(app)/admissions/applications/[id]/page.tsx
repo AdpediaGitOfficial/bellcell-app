@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
 import { db } from '@/lib/db'
-import { requireUser } from '@/lib/auth/current-user'
+import { requirePageUser } from '@/lib/auth/guard'
 import { can } from '@/lib/rbac/can'
 import { outstandingPaise } from '@/lib/fees/core'
 import type { SearchParams } from '@/lib/table/params'
@@ -27,8 +27,7 @@ export default async function ApplicationRecordPage({
   params: Promise<{ id: string }>
   searchParams: Promise<SearchParams>
 }) {
-  const user = await requireUser()
-  if (!can(user, 'admission.application', 'view')) notFound()
+  const user = await requirePageUser('admission.application')
 
   const { id } = await params
   const sp = await searchParams

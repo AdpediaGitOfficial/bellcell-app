@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { ArrowLeftRight } from 'lucide-react'
 import type { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
-import { requireUser } from '@/lib/auth/current-user'
+import { requirePageUser } from '@/lib/auth/guard'
 import { can } from '@/lib/rbac/can'
 import { branchScope, needsBranchChoice } from '@/lib/branch'
 import { parseTableParams, skipTake, type SearchParams } from '@/lib/table/params'
@@ -39,7 +39,7 @@ export default async function TransactionsPage({
 }: {
   searchParams: Promise<SearchParams>
 }) {
-  const user = await requireUser()
+  const user = await requirePageUser('accounts.dailyTransaction')
   const sp = await searchParams
 
   const params = parseTableParams(sp, {

@@ -1,9 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
 import { Construction } from 'lucide-react'
-import { requireUser } from '@/lib/auth/current-user'
-import { can } from '@/lib/rbac/can'
+import { requirePageUser } from '@/lib/auth/guard'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { PageHeader } from '@/components/shell/PageHeader'
@@ -83,8 +81,7 @@ const REPORTS: {
 ]
 
 export default async function ReportsPage() {
-  const user = await requireUser()
-  if (!can(user, 'reports', 'view')) notFound()
+  await requirePageUser('reports')
 
   return (
     <>

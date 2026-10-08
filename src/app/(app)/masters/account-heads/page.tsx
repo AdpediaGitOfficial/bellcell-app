@@ -1,7 +1,6 @@
 import type { Metadata } from 'next'
-import { notFound } from 'next/navigation'
 import { db } from '@/lib/db'
-import { requireUser } from '@/lib/auth/current-user'
+import { requirePageUser } from '@/lib/auth/guard'
 import { can } from '@/lib/rbac/can'
 import { formatPaise } from '@/lib/money'
 import { Card } from '@/components/ui/Card'
@@ -12,8 +11,7 @@ import { AccountHeadEditor } from './AccountHeadEditor'
 export const metadata: Metadata = { title: 'Account heads' }
 
 export default async function AccountHeadsPage() {
-  const user = await requireUser()
-  if (!can(user, 'masters', 'view')) notFound()
+  const user = await requirePageUser('masters')
 
   const heads = await db.accountHead.findMany({
     orderBy: [{ kind: 'asc' }, { name: 'asc' }],

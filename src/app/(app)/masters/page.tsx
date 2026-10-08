@@ -1,9 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
 import { Construction } from 'lucide-react'
-import { requireUser } from '@/lib/auth/current-user'
-import { can } from '@/lib/rbac/can'
+import { requirePageUser } from '@/lib/auth/guard'
 import { Card } from '@/components/ui/Card'
 import { Badge } from '@/components/ui/Badge'
 import { PageHeader } from '@/components/shell/PageHeader'
@@ -75,15 +73,18 @@ const MASTERS: {
   {
     group: 'People',
     items: [
-      { label: 'Department', description: 'Administration, Commerce, Computer Science' },
+      {
+        label: 'Department',
+        href: '/masters/departments',
+        description: 'Administration, Commerce, Computer Science',
+      },
       { label: 'Religion', description: 'Used on the admission form' },
     ],
   },
 ]
 
 export default async function MastersPage() {
-  const user = await requireUser()
-  if (!can(user, 'masters', 'view')) notFound()
+  await requirePageUser('masters')
 
   return (
     <>

@@ -1,7 +1,8 @@
 'use client'
 
+import Link from 'next/link'
 import { useState, useTransition } from 'react'
-import { ChevronDown, LogOut, UserRound } from 'lucide-react'
+import { ChevronDown, KeyRound, LogOut, UserRound } from 'lucide-react'
 import { signOutAction } from '@/app/(app)/actions'
 
 const ROLE_LABELS: Record<string, string> = {
@@ -63,12 +64,23 @@ export function UserMenu({
                 {ROLE_LABELS[role] ?? role}
               </p>
             </div>
+            {/* Your own password is changed from here, never from the
+                Employees screen — that one issues one-time passwords. */}
+            <Link
+              href="/change-password"
+              role="menuitem"
+              onClick={() => setOpen(false)}
+              className="mt-1 flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-base hover:bg-[rgb(var(--surface-hover))]"
+            >
+              <KeyRound className="h-4 w-4" aria-hidden />
+              Change password
+            </Link>
             <button
               type="button"
               role="menuitem"
               disabled={pending}
               onClick={() => startTransition(() => signOutAction())}
-              className="mt-1 flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-base hover:bg-[rgb(var(--surface-hover))] disabled:opacity-60"
+              className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-base hover:bg-[rgb(var(--surface-hover))] disabled:opacity-60"
             >
               <LogOut className="h-4 w-4" aria-hidden />
               {pending ? 'Signing out…' : 'Sign out'}

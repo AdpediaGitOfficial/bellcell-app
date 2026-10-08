@@ -1,9 +1,7 @@
 import type { Metadata } from 'next'
-import { notFound } from 'next/navigation'
 import { BookMarked, CheckCircle2 } from 'lucide-react'
 import { db } from '@/lib/db'
-import { requireUser } from '@/lib/auth/current-user'
-import { can } from '@/lib/rbac/can'
+import { requirePageUser } from '@/lib/auth/guard'
 import { branchScope } from '@/lib/branch'
 import { formatPaise } from '@/lib/money'
 import {
@@ -41,8 +39,7 @@ export default async function DayBookPage({
 }: {
   searchParams: Promise<SearchParams>
 }) {
-  const user = await requireUser()
-  if (!can(user, 'accounts.dayBook', 'view')) notFound()
+  const user = await requirePageUser('accounts.dayBook')
 
   const sp = await searchParams
   const today = new Date()

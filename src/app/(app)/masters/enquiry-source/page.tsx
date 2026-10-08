@@ -1,7 +1,6 @@
 import type { Metadata } from 'next'
-import { notFound } from 'next/navigation'
 import { db } from '@/lib/db'
-import { requireUser } from '@/lib/auth/current-user'
+import { requirePageUser } from '@/lib/auth/guard'
 import { can } from '@/lib/rbac/can'
 import { Card } from '@/components/ui/Card'
 import { PageHeader } from '@/components/shell/PageHeader'
@@ -10,8 +9,7 @@ import { MasterTable } from '../MasterTable'
 export const metadata: Metadata = { title: 'Nature of enquiry' }
 
 export default async function EnquirySourcePage() {
-  const user = await requireUser()
-  if (!can(user, 'masters', 'view')) notFound()
+  const user = await requirePageUser('masters')
 
   const rows = await db.enquirySource.findMany({
     orderBy: [{ archivedAt: 'asc' }, { name: 'asc' }],

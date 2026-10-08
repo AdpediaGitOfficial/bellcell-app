@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { ClipboardCheck } from 'lucide-react'
 import { db } from '@/lib/db'
-import { requireUser } from '@/lib/auth/current-user'
+import { requirePageUser } from '@/lib/auth/guard'
 import { can } from '@/lib/rbac/can'
 import { branchScope } from '@/lib/branch'
 import { Card } from '@/components/ui/Card'
@@ -14,7 +14,7 @@ import { PageHeader } from '@/components/shell/PageHeader'
 export const metadata: Metadata = { title: 'Results' }
 
 export default async function ResultsPage() {
-  const user = await requireUser()
+  const user = await requirePageUser('exam.result')
   if (!can(user, 'exam.result', 'view')) return null
 
   const schedules = await db.examSchedule.findMany({

@@ -296,6 +296,167 @@ async function main() {
   const counsellor = users.find((u) => u.role === 'COUNSELLOR')!
   const accountant = users.find((u) => u.role === 'ACCOUNTANT')!
 
+  // --------------------------------------------------------------- employees
+  // Staff and faculty on roll. Three of them are deliberately linked to the
+  // demo logins above, so the Login & access tab has both cases to show:
+  // someone who can sign in, and someone who only exists as a personnel file.
+  const departments = await db.department.findMany()
+  const deptBy = (code: string) => departments.find((d) => d.code === code)?.id ?? null
+
+  const employeeSpecs: {
+    code: string
+    first: string
+    last: string
+    designation: string
+    dept: string
+    gender: 'MALE' | 'FEMALE'
+    joined: string
+    status?: 'ACTIVE' | 'ON_LEAVE'
+    phone: string
+    linkEmail?: string
+  }[] = [
+    {
+      code: 'EMP-001',
+      first: 'Anjali',
+      last: 'Menon',
+      designation: 'Principal',
+      dept: 'DEPT-ADMIN',
+      gender: 'FEMALE',
+      joined: '2016-06-01',
+      phone: '9847011001',
+      linkEmail: 'principal@bellcell.test',
+    },
+    {
+      code: 'EMP-002',
+      first: 'Rahul',
+      last: 'Nair',
+      designation: 'Accounts Officer',
+      dept: 'DEPT-ADMIN',
+      gender: 'MALE',
+      joined: '2018-07-16',
+      phone: '9847011002',
+      linkEmail: 'accounts@bellcell.test',
+    },
+    {
+      code: 'EMP-003',
+      first: 'Arun',
+      last: 'Kumar',
+      designation: 'Assistant Professor',
+      dept: 'DEPT-CS',
+      gender: 'MALE',
+      joined: '2019-06-10',
+      phone: '9847011003',
+      linkEmail: 'faculty@bellcell.test',
+    },
+    {
+      code: 'EMP-004',
+      first: 'Deepa',
+      last: 'Krishnan',
+      designation: 'Lecturer',
+      dept: 'DEPT-COM',
+      gender: 'FEMALE',
+      joined: '2020-08-03',
+      phone: '9847011004',
+    },
+    {
+      code: 'EMP-005',
+      first: 'Sajith',
+      last: 'Thomas',
+      designation: 'Lecturer',
+      dept: 'DEPT-MGMT',
+      gender: 'MALE',
+      joined: '2021-01-11',
+      status: 'ON_LEAVE',
+      phone: '9847011005',
+    },
+    {
+      code: 'EMP-006',
+      first: 'Fathima',
+      last: 'Riyas',
+      designation: 'Office Assistant',
+      dept: 'DEPT-ADMIN',
+      gender: 'FEMALE',
+      joined: '2022-02-01',
+      phone: '9847011006',
+    },
+    {
+      code: 'EMP-007',
+      first: 'Vinod',
+      last: 'Pillai',
+      designation: 'Lab Instructor',
+      dept: 'DEPT-CS',
+      gender: 'MALE',
+      joined: '2023-06-05',
+      phone: '9847011007',
+    },
+  ]
+
+  const languageRows = await db.language.findMany()
+  const langBy = (name: string) => languageRows.find((l) => l.name === name)?.id
+
+  for (const spec of employeeSpecs) {
+    const employee = await db.employee.upsert({
+      where: {
+        branchId_employeeCode: { branchId: main_.id, employeeCode: spec.code },
+      },
+      update: {},
+      create: {
+        branchId: main_.id,
+        employeeCode: spec.code,
+        firstName: spec.first,
+        lastName: spec.last,
+        gender: spec.gender,
+        designation: spec.designation,
+        departmentId: deptBy(spec.dept),
+        dateOfJoining: new Date(spec.joined),
+        status: spec.status ?? 'ACTIVE',
+        phone: spec.phone,
+        email: `${spec.first.toLowerCase()}.${spec.last.toLowerCase()}@bellcell.test`,
+        city: 'Kozhikode',
+        state: 'Kerala',
+      },
+    })
+
+    if (spec.linkEmail) {
+      await db.user.update({
+        where: { email: spec.linkEmail },
+        data: { employeeId: employee.id },
+      })
+    }
+
+    // A couple of qualifications and languages, so the tabs are not empty.
+    const existingEducation = await db.employeeEducation.count({
+      where: { employeeId: employee.id },
+    })
+    if (existingEducation === 0) {
+      await db.employeeEducation.create({
+        data: {
+          employeeId: employee.id,
+          qualification: spec.dept === 'DEPT-ADMIN' ? 'M.Com' : 'M.Sc',
+          boardOrUniversity: 'Calicut University',
+          yearOfPassing: 2014,
+          marksPercentage: new Prisma.Decimal('72.50'),
+        },
+      })
+    }
+
+    const existingLanguages = await db.employeeLanguageSkill.count({
+      where: { employeeId: employee.id },
+    })
+    if (existingLanguages === 0) {
+      for (const [name, proficiency] of [
+        ['Malayalam', 'NATIVE'],
+        ['English', 'FLUENT'],
+      ] as const) {
+        const languageId = langBy(name)
+        if (!languageId) continue
+        await db.employeeLanguageSkill.create({
+          data: { employeeId: employee.id, languageId, proficiency },
+        })
+      }
+    }
+  }
+
   // ----------------------------------------------------------- fee structure
   // One Year-1 structure per course, so every demo student can be assigned
   // one. Tuition varies by course type to look like a real fee card.

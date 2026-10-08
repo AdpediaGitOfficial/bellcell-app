@@ -419,3 +419,96 @@ ago — which ADR-016 exists to prevent.
 
 **Related:** a completion certificate is refused for a student who has not
 reached the final year of their course.
+
+---
+
+## ADR-028 — Issuing a login needs `settings.user`, not `people.employee:update`
+
+**Decision.** The Employee record's "Login & access" tab is gated on
+`settings.user` (create/update), separately from the permission that edits the
+personnel record. A user with `people.employee:update` and nothing else can
+record someone's degree but cannot give them a login; the tab is not rendered
+at all.
+
+**Why.** The quotation lists "Employee Login" as one line among Education
+Details and Language Known, as though they were the same kind of data entry.
+They are not: one records a fact about a person, the other grants access to
+fee money and students' personal data. Collapsing them means anyone who can
+fix a typo in a designation can also mint an Accountant account.
+
+**Cost.** Two permissions to think about on one screen, and an administrator
+who can edit staff records may still have to ask someone else to create the
+login.
+
+---
+
+## ADR-029 — Role assignment has a ceiling, and the rules are unit-tested
+
+**Decision.** `src/lib/rbac/roles.ts` holds every account-administration
+rule, with 17 unit tests:
+
+* nobody may grant a role at or above their own; only a `SUPER_ADMIN` may
+  mint another `SUPER_ADMIN`;
+* nobody may change their own access from the Employees screen;
+* nobody may change an account at or above their own level;
+* the last active `SUPER_ADMIN` cannot be deactivated.
+
+The form renders only the assignable roles, **and** the server re-checks.
+
+**Why.** Without a ceiling, an `ADMIN` creates a second account as
+`SUPER_ADMIN`, signs into it, and every restriction in the matrix is gone.
+Rules that live only in which `<option>`s a form renders are not rules —
+verified by adding a `SUPER_ADMIN` option to the DOM by hand and confirming
+the server refused it.
+
+The last-super-admin guard exists because the alternative is unrecoverable:
+there is no screen left that could undo it.
+
+---
+
+## ADR-030 — Administrators issue one-time passwords; they never see or set a real one
+
+**Decision.** Creating a login, and resetting one, generates a 12-character
+password, shows it to the administrator **once**, and sets
+`mustChangePassword`. The `(app)` layout then redirects that account to
+`/change-password` and nowhere else until it chooses its own. The generator
+omits `I`, `O`, `l`, `0` and `1`, because these passwords are written on paper
+and handed over.
+
+A reset also clears any lockout and revokes every live session, as does a role
+change and a deactivation.
+
+**Why.** An administrator who types a colleague's password knows it
+afterwards, and an audit trail cannot tell the two of them apart. A one-time
+password that the system forces to be replaced keeps "who did this"
+answerable.
+
+Revoking sessions matters more than it looks: without it, a dismissed
+employee keeps working for up to `SESSION_TTL_HOURS`, and a demotion does not
+take effect until their session happens to expire.
+
+**Cost.** No email gateway is configured (open question #7), so the password
+travels by hand or by phone. The screen says so rather than pretending
+otherwise.
+
+---
+
+## ADR-031 — Every page in the `(app)` group authorises itself, and a test proves it
+
+**Decision.** `requirePageUser(resource, action)` is the first line of every
+page under `src/app/(app)`. `src/app/(app)/guards.test.ts` reads every
+`page.tsx` and fails the build if one does not call it. Exemptions live in a
+named list in that test, with a reason.
+
+**Why.** This was a real defect, not a hypothetical. Detail pages checked
+`can(...)`, but **seventeen list pages did not** — they relied on the sidebar
+to hide them. A FACULTY account could type `/people/employees` and read the
+whole staff directory, including who holds a login. Found by signing in as a
+freshly created Faculty user during a browser pass, not by reading the code.
+
+Hiding a nav item is not access control. A guard that each page must remember
+is a guard that will be forgotten, so the test exists to make forgetting
+impossible.
+
+**Cost.** One more thing for a new page to do, and a test that will fail
+noisily for anyone who adds a page without it — which is the point.

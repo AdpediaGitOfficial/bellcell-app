@@ -9,7 +9,7 @@ import {
   UserPlus,
   Users,
 } from 'lucide-react'
-import { requireUser } from '@/lib/auth/current-user'
+import { requirePageUser } from '@/lib/auth/guard'
 import { formatPaiseShort } from '@/lib/money'
 import { Card, CardHeader } from '@/components/ui/Card'
 import { StatTile } from '@/components/ui/StatTile'
@@ -29,7 +29,7 @@ function greeting(d: Date): string {
 }
 
 export default async function DashboardPage() {
-  const user = await requireUser()
+  const user = await requirePageUser('dashboard')
   const data = await getDashboardData(user)
   const now = new Date()
 

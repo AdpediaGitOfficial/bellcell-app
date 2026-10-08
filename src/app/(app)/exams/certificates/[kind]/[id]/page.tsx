@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ArrowLeft, CheckCircle2 } from 'lucide-react'
 import { db } from '@/lib/db'
-import { requireUser } from '@/lib/auth/current-user'
+import { requirePageUser } from '@/lib/auth/guard'
 import { can } from '@/lib/rbac/can'
 import { branchScope } from '@/lib/branch'
 import type { SearchParams } from '@/lib/table/params'
@@ -20,8 +20,7 @@ export default async function CertificatePage({
   params: Promise<{ kind: string; id: string }>
   searchParams: Promise<SearchParams>
 }) {
-  const user = await requireUser()
-  if (!can(user, 'exam.certificate', 'view')) notFound()
+  const user = await requirePageUser('exam.certificate')
 
   const { kind, id } = await params
   if (kind !== 'tc' && kind !== 'completion') notFound()

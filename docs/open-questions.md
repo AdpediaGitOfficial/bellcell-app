@@ -30,19 +30,30 @@ much rework the answer causes if it arrives late.
 
 4. **Is payroll/attendance in scope?** The vendor's Employee section promises
    "Salary Details, Work Schedule" and then lists no screens for either.
-   **Currently out of scope here.** If it is wanted, it is a module, not a
-   screen.
+   **Currently out of scope here**, and the Employees screen says so on the
+   page rather than leaving staff to hunt for a tab. If it is wanted, it is a
+   module, not a screen, and it needs answers first: what salary components
+   (basic, DA, HRA, allowances), what statutory deductions (PF, ESI, TDS —
+   each with its own rules and returns), monthly or daily wage, and does
+   payroll depend on an attendance system that is also not in scope?
+   Salary paid out is recorded today as a voucher under the Salary account
+   head, which is enough for the Day Book to balance but is not payroll.
 
 5. **Permission matrix sign-off.** `src/lib/rbac/matrix.ts` is a proposal.
    Print it and have the principal sign it. Specifically: should a counsellor
    see fee dues (currently yes, read-only)? Should an accountant be able to
-   edit a student's course (currently no)?
+   edit a student's course (currently no)? And **who may issue logins** —
+   `settings.user` is currently held by ADMIN and SUPER_ADMIN only, which
+   means an office manager who maintains staff records cannot create their
+   accounts (ADR-028).
 
 ## Important — needed before go-live
 
 6. **Email/SMS.** Which gateway? Who pays per-message credits? For SMS in
    India, **DLT sender-ID and template registration must be done in Bell
    Cell's own name** and takes weeks — start it now, not at go-live.
+   Until one exists, an administrator-issued one-time password travels by
+   hand or by phone: it is shown on screen once and never emailed (ADR-030).
 
 7. **Data migration.** How many existing students/enquiries/ledger rows, in
    what format? This is usually the single biggest schedule risk.
@@ -88,6 +99,17 @@ much rework the answer causes if it arrives late.
 
 14. **Retention.** How long must student records, fee receipts and audit logs
     be kept? Affects backup and archival design.
+
+15. **Account policy for staff who leave.** Archiving an employee disables
+    their login and ends their sessions (ADR-030), but two questions are the
+    institute's to answer: should the account be *deleted* after some period,
+    and should a login expire on its own if unused for N months? Neither is
+    implemented.
+
+16. **Session length.** `SESSION_TTL_HOURS` defaults to 12 — one working day.
+    Shorter is safer on a shared front-desk machine; longer is kinder to
+    staff. Confirm, and confirm whether an idle timeout is wanted as well
+    (currently there is none; the limit is absolute).
 
 ## Explicitly out of scope in this build
 

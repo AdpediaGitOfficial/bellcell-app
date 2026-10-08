@@ -93,6 +93,12 @@ docs/                     analysis, decisions, design system, open questions
 - **Never write a bare `where` on a branch-scoped table.** Spread
   `branchScope(user)` into it.
 - **Every write calls `recordAudit`.**
+- **Every page under `src/app/(app)` starts with `requirePageUser(resource)`.**
+  `src/app/(app)/guards.test.ts` fails the build otherwise. Hiding a nav item
+  is not access control (ADR-031).
+- **Logins are administered only through `src/lib/rbac/roles.ts`** — role
+  ceilings, self-modification and the last-super-admin guard live there, with
+  tests (ADR-029).
 - **Money moves only through `src/lib/fees/service.ts`**, inside a
   transaction. Never write `paidPaise` or a ledger row by hand.
 - **Brand `#00A59F` is never a background for small white text** (3.05:1,
@@ -171,6 +177,27 @@ and concession caps.
 them. They are isolated in `src/lib/exams/core.ts` and listed for
 confirmation in [open question #10](docs/open-questions.md). Changing one is a
 change to that single file.
+
+**Employee — complete:**
+
+| Screen | What works |
+|---|---|
+| Employees | List with status / department / has-a-login filters, search, summary tiles, export |
+| Record tabs | Personal (full edit), Education, Experience, Language skills (read/write/speak separately), Login & access |
+| Login & access | Issue a login within the actor's role ceiling, change role, reset to a one-time password, disable — each revoking live sessions |
+| Change password | Forced on first sign-in after an administrator issues or resets a password; also reachable from the account menu |
+| Masters | Departments, with codes and employee counts |
+
+Archiving an employee who holds a login disables that account and ends its
+sessions in the same transaction — an archived employee with a live login is
+exactly the gap nobody notices.
+
+⚠ **Payroll and attendance are not built.** The quotation's own introduction
+mentioned "Salary Details" and "Work Schedule" but listed no screens, fields
+or rules for either. The Employees screen says so on the page rather than
+leaving staff to hunt for a tab that was never specified — see
+[open question #4](docs/open-questions.md). Salary paid out is recorded today
+as a voucher under the Salary account head.
 
 ---
 

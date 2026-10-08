@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { ShieldCheck } from 'lucide-react'
-import { requireUser } from '@/lib/auth/current-user'
+import { requirePageUser } from '@/lib/auth/guard'
 import { can } from '@/lib/rbac/can'
 import { parseTableParams, type SearchParams } from '@/lib/table/params'
 import { getDensity } from '@/lib/table/density'
@@ -48,7 +48,7 @@ export default async function CertificatesPage({
 }: {
   searchParams: Promise<SearchParams>
 }) {
-  const user = await requireUser()
+  const user = await requirePageUser('admission.certificateCustody')
   const sp = await searchParams
 
   const params = parseTableParams(sp, {

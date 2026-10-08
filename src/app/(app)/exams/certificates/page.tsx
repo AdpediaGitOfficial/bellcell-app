@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Award } from 'lucide-react'
 import { db } from '@/lib/db'
-import { requireUser } from '@/lib/auth/current-user'
+import { requirePageUser } from '@/lib/auth/guard'
 import { can } from '@/lib/rbac/can'
 import { branchScope } from '@/lib/branch'
 import { Card } from '@/components/ui/Card'
@@ -14,7 +14,7 @@ import { IssueCompletion, IssueTc } from './IssueForms'
 export const metadata: Metadata = { title: 'Certificates Issued' }
 
 export default async function CertificatesIssuedPage() {
-  const user = await requireUser()
+  const user = await requirePageUser('exam.certificate')
   if (!can(user, 'exam.certificate', 'view')) return null
 
   const scope = branchScope(user)

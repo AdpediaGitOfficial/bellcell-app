@@ -1,10 +1,8 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
 import { db } from '@/lib/db'
-import { requireUser } from '@/lib/auth/current-user'
-import { can } from '@/lib/rbac/can'
+import { requirePageUser } from '@/lib/auth/guard'
 import { branchScope } from '@/lib/branch'
 import type { SearchParams } from '@/lib/table/params'
 import { Card } from '@/components/ui/Card'
@@ -29,8 +27,7 @@ export default async function Page({
 }: {
   searchParams: Promise<SearchParams>
 }) {
-  const user = await requireUser()
-  if (!can(user, 'reports', 'view')) notFound()
+  const user = await requirePageUser('reports')
 
   const sp = await searchParams
   const range = parseRange(sp)

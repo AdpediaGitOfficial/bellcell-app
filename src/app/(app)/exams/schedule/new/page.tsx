@@ -1,8 +1,6 @@
 import type { Metadata } from 'next'
-import { notFound } from 'next/navigation'
 import { db } from '@/lib/db'
-import { requireUser } from '@/lib/auth/current-user'
-import { can } from '@/lib/rbac/can'
+import { requirePageUser } from '@/lib/auth/guard'
 import { needsBranchChoice } from '@/lib/branch'
 import { Card } from '@/components/ui/Card'
 import { PageHeader } from '@/components/shell/PageHeader'
@@ -11,8 +9,7 @@ import { ScheduleForm } from '../ScheduleForm'
 export const metadata: Metadata = { title: 'New examination' }
 
 export default async function NewSchedulePage() {
-  const user = await requireUser()
-  if (!can(user, 'exam.schedule', 'create')) notFound()
+  const user = await requirePageUser('exam.schedule', 'create')
 
   const [courses, batches, centres] = await Promise.all([
     db.course.findMany({

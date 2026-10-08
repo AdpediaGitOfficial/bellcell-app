@@ -3,8 +3,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
 import { db } from '@/lib/db'
-import { requireUser } from '@/lib/auth/current-user'
-import { can } from '@/lib/rbac/can'
+import { requirePageUser } from '@/lib/auth/guard'
 import { branchScope } from '@/lib/branch'
 import { formatPaise } from '@/lib/money'
 import { outstandingPaise } from '@/lib/fees/core'
@@ -19,8 +18,7 @@ export default async function CollectFeePage({
 }: {
   params: Promise<{ studentId: string }>
 }) {
-  const user = await requireUser()
-  if (!can(user, 'admission.fee', 'create')) notFound()
+  const user = await requirePageUser('admission.fee', 'create')
 
   const { studentId } = await params
 

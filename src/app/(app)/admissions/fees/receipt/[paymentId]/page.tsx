@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ArrowLeft, CheckCircle2 } from 'lucide-react'
 import { db } from '@/lib/db'
-import { requireUser } from '@/lib/auth/current-user'
+import { requirePageUser } from '@/lib/auth/guard'
 import { can } from '@/lib/rbac/can'
 import { branchScope } from '@/lib/branch'
 import { formatPaise } from '@/lib/money'
@@ -32,8 +32,7 @@ export default async function ReceiptPage({
   params: Promise<{ paymentId: string }>
   searchParams: Promise<SearchParams>
 }) {
-  const user = await requireUser()
-  if (!can(user, 'admission.fee', 'view')) notFound()
+  const user = await requirePageUser('admission.fee')
 
   const { paymentId } = await params
   const sp = await searchParams

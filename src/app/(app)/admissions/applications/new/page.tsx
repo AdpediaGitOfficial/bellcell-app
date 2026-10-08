@@ -1,8 +1,7 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { db } from '@/lib/db'
-import { requireUser } from '@/lib/auth/current-user'
-import { can } from '@/lib/rbac/can'
+import { requirePageUser } from '@/lib/auth/guard'
 import { branchScope, needsBranchChoice } from '@/lib/branch'
 import type { SearchParams } from '@/lib/table/params'
 import { Card } from '@/components/ui/Card'
@@ -18,8 +17,7 @@ export default async function NewApplicationPage({
 }: {
   searchParams: Promise<SearchParams>
 }) {
-  const user = await requireUser()
-  if (!can(user, 'admission.application', 'create')) notFound()
+  const user = await requirePageUser('admission.application', 'create')
 
   const sp = await searchParams
   const enquiryId = typeof sp.enquiryId === 'string' ? sp.enquiryId : undefined

@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { requirePageUser } from '@/lib/auth/guard'
 import type { SearchParams } from '@/lib/table/params'
 import { EnquiryScreen } from '../enquiries/EnquiryScreen'
 
@@ -14,6 +15,7 @@ export default async function CounsellingPage({
 }: {
   searchParams: Promise<SearchParams>
 }) {
+  await requirePageUser('enquiry.counselling')
   const sp = await searchParams
 
   return (

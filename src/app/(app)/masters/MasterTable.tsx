@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState, useState } from 'react'
+import { useActionState, useCallback, useEffect, useRef, useState } from 'react'
 import { useFormStatus } from 'react-dom'
 import { AlertCircle, Archive, Pencil, Plus, RotateCcw, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
@@ -17,6 +17,7 @@ import {
 export interface MasterRow {
   id: string
   name: string
+  code?: string
   archivedAt: Date | null
   requiresFollowUp?: boolean
   isTerminal?: boolean
@@ -39,6 +40,7 @@ export function MasterTable({
   canEdit,
   canDelete,
   showFlags = false,
+  showCode = false,
   usageLabel = 'in use',
 }: {
   kind: MasterKind
@@ -46,11 +48,12 @@ export function MasterTable({
   canEdit: boolean
   canDelete: boolean
   showFlags?: boolean
+  /** Entries carrying a short code, set once at creation. */
+  showCode?: boolean
   usageLabel?: string
 }) {
   const [editing, setEditing] = useState<MasterRow | 'new' | null>(null)
-  const save = saveMasterAction.bind(null, kind)
-  const [state, formAction] = useActionState<MasterState, FormData>(save, {})
+  const close = useCallback(() => setEditing(null), [])
 
   const current = editing === 'new' ? null : editing
 
@@ -66,85 +69,13 @@ export function MasterTable({
       )}
 
       {editing !== null && (
-        <form
-          action={async (fd) => {
-            await formAction(fd)
-            setEditing(null)
-          }}
-          className="mx-5 mt-4 rounded-lg border border-[rgb(var(--border-base))] p-4"
-        >
-          <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-sm font-semibold text-strong">
-              {current ? 'Edit entry' : 'New entry'}
-            </h3>
-            <button
-              type="button"
-              onClick={() => setEditing(null)}
-              aria-label="Cancel"
-              className="rounded p-1 text-faint hover:text-strong"
-            >
-              <X className="h-4 w-4" aria-hidden />
-            </button>
-          </div>
-
-          {state.error && (
-            <p
-              role="alert"
-              className="mb-3 flex items-start gap-2 rounded-lg bg-critical-50 px-3 py-2 text-sm text-critical-700 dark:bg-critical-500/10 dark:text-critical-500"
-            >
-              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
-              {state.error}
-            </p>
-          )}
-
-          <input type="hidden" name="id" value={current?.id ?? ''} />
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Name" htmlFor="name" required>
-              <Input id="name" name="name" defaultValue={current?.name ?? ''} required autoFocus />
-            </Field>
-
-            {showFlags && (
-              <>
-                <Field label="Sort order" htmlFor="sortOrder">
-                  <Input
-                    id="sortOrder"
-                    name="sortOrder"
-                    type="number"
-                    defaultValue={current?.sortOrder ?? 0}
-                  />
-                </Field>
-
-                <label className="flex items-center gap-2 text-sm text-base">
-                  <input
-                    type="checkbox"
-                    name="requiresFollowUp"
-                    defaultChecked={current?.requiresFollowUp ?? true}
-                    className="h-4 w-4 rounded border-[rgb(var(--border-strong))] text-brand-700 focus:ring-brand-500"
-                  />
-                  Requires a follow-up call
-                </label>
-
-                <label className="flex items-center gap-2 text-sm text-base">
-                  <input
-                    type="checkbox"
-                    name="isTerminal"
-                    defaultChecked={current?.isTerminal ?? false}
-                    className="h-4 w-4 rounded border-[rgb(var(--border-strong))] text-brand-700 focus:ring-brand-500"
-                  />
-                  Closes the enquiry
-                </label>
-              </>
-            )}
-          </div>
-
-          <div className="mt-4 flex justify-end gap-2">
-            <Button type="button" variant="secondary" size="sm" onClick={() => setEditing(null)}>
-              Cancel
-            </Button>
-            <SubmitButton label={current ? 'Save changes' : 'Add entry'} />
-          </div>
-        </form>
+        <MasterForm
+          kind={kind}
+          current={current}
+          showFlags={showFlags}
+          showCode={showCode}
+          onClose={close}
+        />
       )}
 
       <div className="scroll-slim mt-4 w-full overflow-x-auto">
@@ -184,6 +115,11 @@ export function MasterTable({
                   <span className={r.archivedAt ? 'line-through opacity-60' : ''}>
                     {r.name}
                   </span>
+                  {r.code && (
+                    <span className="numeric ml-2 text-xs font-normal text-faint">
+                      {r.code}
+                    </span>
+                  )}
                   {r.archivedAt && (
                     <Badge tone="neutral" className="ml-2">
                       Archived
@@ -245,5 +181,145 @@ export function MasterTable({
         </table>
       </div>
     </>
+  )
+}
+
+/**
+ * The editor is its own component so that `useActionState` lives and dies
+ * with the open form.
+ *
+ * It also closes ONLY on a successful save. The earlier version closed
+ * unconditionally after the action, which swallowed every validation error —
+ * a duplicate entry looked like it had saved. Caught by a browser pass.
+ */
+function MasterForm({
+  kind,
+  current,
+  showFlags,
+  showCode,
+  onClose,
+}: {
+  kind: MasterKind
+  current: MasterRow | null
+  showFlags: boolean
+  showCode: boolean
+  onClose: () => void
+}) {
+  const [state, formAction] = useActionState<MasterState, FormData>(
+    saveMasterAction.bind(null, kind),
+    {},
+  )
+
+  const nameRef = useRef<HTMLInputElement>(null)
+  const codeRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (state.ok) {
+      onClose()
+      return
+    }
+    // React clears an uncontrolled form once its action settles — a refusal
+    // included — so put back what was typed. useActionState hands us a new
+    // object every submit, so this also fires when the same error repeats.
+    if (state.values?.name !== undefined && nameRef.current) {
+      nameRef.current.value = state.values.name
+    }
+    if (state.values?.code !== undefined && codeRef.current) {
+      codeRef.current.value = state.values.code
+    }
+  }, [state, onClose])
+
+  return (
+    <form
+      action={formAction}
+      className="mx-5 mt-4 rounded-lg border border-[rgb(var(--border-base))] p-4"
+    >
+      <div className="mb-3 flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-strong">
+          {current ? 'Edit entry' : 'New entry'}
+        </h3>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Cancel"
+          className="rounded p-1 text-faint hover:text-strong"
+        >
+          <X className="h-4 w-4" aria-hidden />
+        </button>
+      </div>
+
+      {state.error && (
+        <p
+          role="alert"
+          className="mb-3 flex items-start gap-2 rounded-lg bg-critical-50 px-3 py-2 text-sm text-critical-700 dark:bg-critical-500/10 dark:text-critical-500"
+        >
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+          {state.error}
+        </p>
+      )}
+
+      <input type="hidden" name="id" value={current?.id ?? ''} />
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        {/* Code is set once: it is what printed lists are sorted by, so a
+            later rename would silently reorder old paperwork. */}
+        {showCode && !current && (
+          <Field label="Code" htmlFor="code" required hint="Short, e.g. COMM.">
+            <Input ref={codeRef} id="code" name="code" required maxLength={20} />
+          </Field>
+        )}
+
+        <Field label="Name" htmlFor="name" required>
+          <Input
+            ref={nameRef}
+            id="name"
+            name="name"
+            defaultValue={current?.name ?? ''}
+            required
+            autoFocus
+          />
+        </Field>
+
+        {showFlags && (
+          <>
+            <Field label="Sort order" htmlFor="sortOrder">
+              <Input
+                id="sortOrder"
+                name="sortOrder"
+                type="number"
+                defaultValue={current?.sortOrder ?? 0}
+              />
+            </Field>
+
+            <label className="flex items-center gap-2 text-sm text-base">
+              <input
+                type="checkbox"
+                name="requiresFollowUp"
+                defaultChecked={current?.requiresFollowUp ?? true}
+                className="h-4 w-4 rounded border-[rgb(var(--border-strong))] text-brand-700 focus:ring-brand-500"
+              />
+              Requires a follow-up call
+            </label>
+
+            <label className="flex items-center gap-2 text-sm text-base">
+              <input
+                type="checkbox"
+                name="isTerminal"
+                defaultChecked={current?.isTerminal ?? false}
+                className="h-4 w-4 rounded border-[rgb(var(--border-strong))] text-brand-700 focus:ring-brand-500"
+              />
+              Closes the enquiry
+            </label>
+          </>
+        )}
+      </div>
+
+      <div className="mt-4 flex justify-end gap-2">
+        <Button type="button" variant="secondary" size="sm" onClick={onClose}>
+          Cancel
+        </Button>
+        <SubmitButton label={current ? 'Save changes' : 'Add entry'} />
+      </div>
+    </form>
   )
 }

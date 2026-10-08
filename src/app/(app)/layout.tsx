@@ -1,3 +1,4 @@
+import { redirect } from 'next/navigation'
 import { requireUser } from '@/lib/auth/current-user'
 import { canView } from '@/lib/rbac/can'
 import { NAV } from '@/lib/nav'
@@ -10,6 +11,11 @@ export default async function AppLayout({
   children: React.ReactNode
 }) {
   const user = await requireUser()
+
+  // An account on a one-time password gets exactly one screen until it is
+  // changed. Enforced here rather than on the login form, because a session
+  // created before the reset must be caught too.
+  if (user.mustChangePassword) redirect('/change-password')
 
   // The nav is filtered by permission, so a counsellor never sees Accounts
   // and an empty group never renders a bare heading.

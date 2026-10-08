@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { BookOpen, Undo2 } from 'lucide-react'
 import { db } from '@/lib/db'
-import { requireUser } from '@/lib/auth/current-user'
+import { requirePageUser } from '@/lib/auth/guard'
 import { can } from '@/lib/rbac/can'
 import { branchScope } from '@/lib/branch'
 import { Card } from '@/components/ui/Card'
@@ -15,7 +15,7 @@ import { AddMaterial, IssueMaterial } from './MaterialControls'
 export const metadata: Metadata = { title: 'Study Materials' }
 
 export default async function StudyMaterialsPage() {
-  const user = await requireUser()
+  const user = await requirePageUser('admission.studyMaterial')
   const scope = branchScope(user)
 
   const [materials, issues, students, courses] = await Promise.all([

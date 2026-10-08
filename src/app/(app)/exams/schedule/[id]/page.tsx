@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ArrowLeft, ClipboardCheck, Printer } from 'lucide-react'
 import { db } from '@/lib/db'
-import { requireUser } from '@/lib/auth/current-user'
+import { requirePageUser } from '@/lib/auth/guard'
 import { can } from '@/lib/rbac/can'
 import { branchScope } from '@/lib/branch'
 import { Card } from '@/components/ui/Card'
@@ -28,8 +28,7 @@ export default async function ScheduleDetailPage({
 }: {
   params: Promise<{ id: string }>
 }) {
-  const user = await requireUser()
-  if (!can(user, 'exam.schedule', 'view')) notFound()
+  const user = await requirePageUser('exam.schedule')
 
   const { id } = await params
 

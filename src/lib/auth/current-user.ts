@@ -16,6 +16,12 @@ export interface CurrentUser extends Principal {
   /** The branch currently selected in this session. */
   activeBranchId: string | null
   overrides: Record<string, boolean>
+  /**
+   * True while the account is on a one-time password. The app layout sends
+   * these users to /change-password and nowhere else: a temporary password
+   * handed over on paper must not stay usable.
+   */
+  mustChangePassword: boolean
 }
 
 /**
@@ -72,6 +78,7 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
       session.branchId ??
       (user.role === 'SUPER_ADMIN' ? null : (branches[0]?.id ?? null)),
     overrides,
+    mustChangePassword: user.mustChangePassword,
   }
 })
 

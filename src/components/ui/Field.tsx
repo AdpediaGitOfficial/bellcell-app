@@ -44,9 +44,13 @@ export function Field({
 
 export function Input({
   className,
+  ref,
   ...props
-}: React.InputHTMLAttributes<HTMLInputElement>) {
-  return <input className={cn(CONTROL, className)} {...props} />
+}: React.InputHTMLAttributes<HTMLInputElement> & {
+  /** React 19 passes refs as an ordinary prop; no forwardRef needed. */
+  ref?: React.Ref<HTMLInputElement>
+}) {
+  return <input ref={ref} className={cn(CONTROL, className)} {...props} />
 }
 
 export function Textarea({

@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 import { CalendarDays, Plus } from 'lucide-react'
 import { db } from '@/lib/db'
-import { requireUser } from '@/lib/auth/current-user'
+import { requirePageUser } from '@/lib/auth/guard'
 import { can } from '@/lib/rbac/can'
 import { branchScope } from '@/lib/branch'
 import { Card } from '@/components/ui/Card'
@@ -21,7 +21,7 @@ const TERM_LABELS: Record<string, string> = {
 }
 
 export default async function ExamSchedulePage() {
-  const user = await requireUser()
+  const user = await requirePageUser('exam.schedule')
 
   const schedules = await db.examSchedule.findMany({
     where: { ...branchScope(user), archivedAt: null },

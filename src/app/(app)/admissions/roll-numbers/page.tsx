@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
 import { Hash } from 'lucide-react'
-import { requireUser } from '@/lib/auth/current-user'
+import { requirePageUser } from '@/lib/auth/guard'
 import { can } from '@/lib/rbac/can'
 import { needsBranchChoice } from '@/lib/branch'
 import type { SearchParams } from '@/lib/table/params'
@@ -35,7 +35,7 @@ export default async function RollNumbersPage({
 }: {
   searchParams: Promise<SearchParams>
 }) {
-  const user = await requireUser()
+  const user = await requirePageUser('admission.rollNumber')
   const sp = await searchParams
   const scope = parseRollScope(sp)
 

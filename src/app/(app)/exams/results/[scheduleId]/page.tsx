@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
 import { db } from '@/lib/db'
-import { requireUser } from '@/lib/auth/current-user'
+import { requirePageUser } from '@/lib/auth/guard'
 import { can } from '@/lib/rbac/can'
 import { branchScope } from '@/lib/branch'
 import { aggregate, cohortStats, type SubjectMark } from '@/lib/exams/core'
@@ -22,8 +22,7 @@ export default async function MarkEntryPage({
 }: {
   params: Promise<{ scheduleId: string }>
 }) {
-  const user = await requireUser()
-  if (!can(user, 'exam.result', 'view')) notFound()
+  const user = await requirePageUser('exam.result')
 
   const { scheduleId } = await params
 
