@@ -141,3 +141,215 @@ export async function leadCountReport(
 
   return [...buckets.values()].sort((a, b) => b.total - a.total)
 }
+
+// ---------------------------------------------------------------------------
+// Application-module reports
+// ---------------------------------------------------------------------------
+
+export interface StudentSummaryRow {
+  key: string
+  label: string
+  total: number
+  active: number
+  completed: number
+  dropped: number
+}
+
+/** "Students Summary" — headcount by course, batch, status or branch. */
+export async function studentsSummaryReport(
+  user: CurrentUser,
+  range: ReportRange,
+  groupBy: 'course' | 'batch' | 'branch' | 'classMode',
+): Promise<StudentSummaryRow[]> {
+  const rows = await db.student.findMany({
+    where: {
+      ...branchScope(user),
+      archivedAt: null,
+      createdAt: { gte: range.from, lte: range.to },
+    },
+    select: {
+      status: true,
+      course: { select: { id: true, name: true } },
+      batch: { select: { id: true, name: true } },
+      branch: { select: { id: true, name: true } },
+      classMode: { select: { id: true, name: true } },
+    },
+  })
+
+  const buckets = new Map<string, StudentSummaryRow>()
+
+  for (const r of rows) {
+    const dim =
+      groupBy === 'course'
+        ? { id: r.course.id, label: r.course.name }
+        : groupBy === 'batch'
+          ? { id: r.batch.id, label: r.batch.name }
+          : groupBy === 'classMode'
+            ? { id: r.classMode?.id ?? '—', label: r.classMode?.name ?? 'Not specified' }
+            : { id: r.branch.id, label: r.branch.name }
+
+    const row =
+      buckets.get(dim.id) ??
+      { key: dim.id, label: dim.label, total: 0, active: 0, completed: 0, dropped: 0 }
+
+    row.total += 1
+    if (['ADMITTED', 'ACTIVE', 'PROMOTED'].includes(r.status)) row.active += 1
+    else if (r.status === 'COMPLETED') row.completed += 1
+    else if (['DROPPED', 'CANCELLED', 'TRANSFERRED'].includes(r.status)) row.dropped += 1
+
+    buckets.set(dim.id, row)
+  }
+
+  return [...buckets.values()].sort((a, b) => b.total - a.total)
+}
+
+export interface MoneyRow {
+  key: string
+  label: string
+  count: number
+  amountPaise: number
+}
+
+/**
+ * "Fee collection summary" — what was actually received in the period,
+ * read from completed payments. Cancelled and bounced receipts are excluded,
+ * which is the number that should tie to the Day Book.
+ */
+export async function feeCollectionReport(
+  user: CurrentUser,
+  range: ReportRange,
+  groupBy: 'mode' | 'course' | 'branch' | 'collector' | 'day',
+): Promise<MoneyRow[]> {
+  const rows = await db.payment.findMany({
+    where: {
+      ...branchScope(user),
+      status: 'COMPLETED',
+      receiptDate: { gte: range.from, lte: range.to },
+    },
+    select: {
+      amountPaise: true,
+      mode: true,
+      receiptDate: true,
+      branch: { select: { id: true, name: true } },
+      collectedBy: { select: { id: true, fullName: true } },
+      student: { select: { course: { select: { id: true, name: true } } } },
+    },
+  })
+
+  const buckets = new Map<string, MoneyRow>()
+
+  for (const r of rows) {
+    const dim =
+      groupBy === 'mode'
+        ? { id: r.mode, label: r.mode.replace('_', ' ') }
+        : groupBy === 'course'
+          ? { id: r.student.course.id, label: r.student.course.name }
+          : groupBy === 'collector'
+            ? { id: r.collectedBy?.id ?? '—', label: r.collectedBy?.fullName ?? 'Unknown' }
+            : groupBy === 'day'
+              ? {
+                  id: r.receiptDate.toISOString().slice(0, 10),
+                  label: r.receiptDate.toLocaleDateString('en-IN', {
+                    day: 'numeric',
+                    month: 'short',
+                    year: 'numeric',
+                  }),
+                }
+              : { id: r.branch.id, label: r.branch.name }
+
+    const row = buckets.get(dim.id) ?? { key: dim.id, label: dim.label, count: 0, amountPaise: 0 }
+    row.count += 1
+    row.amountPaise += r.amountPaise
+    buckets.set(dim.id, row)
+  }
+
+  const out = [...buckets.values()]
+  return groupBy === 'day'
+    ? out.sort((a, b) => a.key.localeCompare(b.key))
+    : out.sort((a, b) => b.amountPaise - a.amountPaise)
+}
+
+export interface StudentFeeRow {
+  studentId: string
+  name: string
+  admissionNo: string
+  course: string
+  batch: string
+  duePaise: number
+  concessionPaise: number
+  paidPaise: number
+  outstandingPaise: number
+  overdue: boolean
+}
+
+/**
+ * "Students fee summary" — the per-student ledger the office chases from.
+ * Ignores the date range: an outstanding balance is a present-tense fact.
+ */
+export async function studentFeeReport(
+  user: CurrentUser,
+  onlyOutstanding: boolean,
+): Promise<StudentFeeRow[]> {
+  const students = await db.student.findMany({
+    where: {
+      ...branchScope(user),
+      archivedAt: null,
+      ...(onlyOutstanding
+        ? { installments: { some: { status: { in: ['PENDING', 'PARTIALLY_PAID', 'OVERDUE'] } } } }
+        : {}),
+    },
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      applicationNo: true,
+      admissionNo: true,
+      course: { select: { name: true } },
+      batch: { select: { name: true } },
+      installments: {
+        select: {
+          duePaise: true,
+          concessionPaise: true,
+          lateFeePaise: true,
+          paidPaise: true,
+          status: true,
+        },
+      },
+    },
+    orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
+    take: 5000,
+  })
+
+  return students.map((s) => {
+    let due = 0
+    let concession = 0
+    let paid = 0
+    let outstanding = 0
+    let overdue = false
+
+    for (const i of s.installments) {
+      due += i.duePaise + i.lateFeePaise
+      concession += i.concessionPaise
+      paid += i.paidPaise
+      const bal = Math.max(
+        0,
+        i.duePaise + i.lateFeePaise - i.concessionPaise - i.paidPaise,
+      )
+      outstanding += bal
+      if (bal > 0 && i.status === 'OVERDUE') overdue = true
+    }
+
+    return {
+      studentId: s.id,
+      name: `${s.firstName} ${s.lastName ?? ''}`.trim(),
+      admissionNo: s.admissionNo ?? s.applicationNo,
+      course: s.course.name,
+      batch: s.batch.name,
+      duePaise: due,
+      concessionPaise: concession,
+      paidPaise: paid,
+      outstandingPaise: outstanding,
+      overdue,
+    }
+  })
+}

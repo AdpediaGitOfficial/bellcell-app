@@ -33,7 +33,11 @@ const REPORTS: {
   {
     group: 'Students',
     items: [
-      { label: 'Students summary', description: 'Headcount by course, batch and status.' },
+      {
+        label: 'Students summary',
+        href: '/reports/students-summary',
+        description: 'Headcount by course, batch, mode or branch, split by status.',
+      },
       { label: 'Student ID card summary', description: 'Requested, received, collected.' },
       { label: 'Study material issue summary', description: 'What was issued to whom.' },
       { label: 'Student certificate summary', description: 'TCs and completion certificates.' },
@@ -42,8 +46,16 @@ const REPORTS: {
   {
     group: 'Fees & accounts',
     items: [
-      { label: 'Fee collection summary', description: 'Collections by period and fee type.' },
-      { label: 'Students fee summary', description: 'Per-student dues and payments.' },
+      {
+        label: 'Fee collection summary',
+        href: '/reports/fee-collection',
+        description: 'Money received, by day, mode, course or collector.',
+      },
+      {
+        label: 'Students fee summary',
+        href: '/reports/student-fees',
+        description: 'Per-student dues, concessions and payments.',
+      },
       { label: 'Affiliation tie-up payment summary', description: 'Collected vs remitted.' },
       { label: 'Day book', description: 'All money movement for a date.' },
       { label: 'Payment receipt summary', description: 'Receipts issued in a period.' },

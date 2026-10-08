@@ -164,3 +164,59 @@ screen; each master page is a thin wrapper supplying its rows and labels.
 **Why.** The masters are structurally identical — a name, occasionally a flag
 or two, add/edit/archive. Nineteen near-copies would be nineteen places to fix
 the same bug. The index page at `/masters` keeps them to one nav entry.
+
+---
+
+## ADR-012 — Instalments are a snapshot, not a view of the structure
+
+**Decision.** Assigning a fee structure materialises concrete
+`FeeInstallment` rows. Later edits to the structure master do not rewrite
+what an already-admitted student owes.
+
+**Why.** Correcting next year's fee card must not silently re-bill last
+year's students. The same reasoning as ADR-008: history stays accurate.
+
+**Cost.** A genuine correction to an existing student's dues is a deliberate
+act (concession, or an adjusted instalment), not a master edit. That is the
+intended friction.
+
+---
+
+## ADR-013 — A payment that cannot be fully allocated is refused
+
+**Decision.** `recordPayment` spreads money across instalments oldest-first
+(or across explicitly chosen ones) and **rejects** the payment if any rupee
+is left unallocated.
+
+**Why.** Accepting it would put money in the ledger that no instalment
+credits, and the fee register would stop tying to the Day Book — the exact
+failure ADR-003 exists to prevent. The cashier is told the overpayment amount
+and asked to reduce it or raise the dues first.
+
+**Verified.** `src/lib/fees/service.int.test.ts` asserts the rejection, and a
+SQL check confirms completed payments, ledger debits, allocations and
+instalment `paidPaise` all agree to the rupee.
+
+---
+
+## ADR-014 — Receipts are cancelled, never deleted
+
+**Decision.** Cancelling reverses the allocations, posts a contra ledger
+entry, and marks the payment CANCELLED or BOUNCED. The row and its receipt
+number stay.
+
+**Why.** A deleted receipt leaves a hole in the number series that nobody can
+explain to an auditor. Receipt numbers are allocated inside the payment's own
+transaction, so a failed payment never burns one either.
+
+---
+
+## ADR-015 — Concessions require approval, and cannot exceed the balance
+
+**Decision.** Applying a concession needs `admission.concession:approve`,
+which the matrix grants only to ADMIN and SUPER_ADMIN. An accountant may
+propose but not approve. The amount is capped at what is still owed on that
+instalment, and every concession stores its reason and approver.
+
+**Why.** A discount is money the institute chooses not to collect. Letting
+whoever handles the cash also grant it removes the only control over it.

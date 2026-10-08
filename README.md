@@ -69,6 +69,7 @@ npm run check       # typecheck + lint + tests
 npm run db:migrate  # create/apply a migration
 npm run db:seed     # seed demo data (idempotent)
 npm run db:studio   # browse the database
+npm run test:int    # integration tests (needs a running database)
 ```
 
 ## Project layout
@@ -92,6 +93,8 @@ docs/                     analysis, decisions, design system, open questions
 - **Never write a bare `where` on a branch-scoped table.** Spread
   `branchScope(user)` into it.
 - **Every write calls `recordAudit`.**
+- **Money moves only through `src/lib/fees/service.ts`**, inside a
+  transaction. Never write `paidPaise` or a ledger row by hand.
 - **Brand `#00A59F` is never a background for small white text** (3.05:1,
   fails WCAG AA). Filled controls use `brand-700`. The `Button` component does
   not expose the unsafe variant.
@@ -121,7 +124,24 @@ are mostly queries and columns.
 Unbuilt modules in the signed scope resolve to an honest "not built yet"
 screen rather than a 404, and `/masters` and `/reports` mark planned entries.
 
-**Next:** the Application module — the student record, then the fee engine.
+**Application module — core complete:**
+
+| Screen | What works |
+|---|---|
+| Applications | List with 4 filters and export, create (pre-filled from a counselled enquiry), tabbed record |
+| Record tabs | Personal (full edit), Education (with certificate custody), Family (guardians), Fees, Timeline (audit-backed) |
+| Fee Collection | Worklist of who owes what; collect with FIFO or targeted allocation; overpayment refused |
+| Receipt | Printable A5/A4 receipt; cancel/bounce reverses allocations and posts a contra entry |
+| Reports | Students Summary, Fee Collection Summary, Students Fee Summary |
+
+**The fee engine** (`src/lib/fees/`) is the critical code: 23 unit tests on the
+pure logic and 9 integration tests against a real database, covering FIFO
+allocation, overpayment refusal, concurrent receipt numbering, cancellation
+and concession caps.
+
+**Next:** the remaining Admissions screens (ID cards, roll numbers,
+certificate custody workflow, study materials), then Examinations and
+Accounts.
 
 Open questions for the institute are tracked in
 [`docs/open-questions.md`](docs/open-questions.md). Two of them —

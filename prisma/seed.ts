@@ -297,29 +297,47 @@ async function main() {
   const accountant = users.find((u) => u.role === 'ACCOUNTANT')!
 
   // ----------------------------------------------------------- fee structure
-  const structure = await db.feeStructure.upsert({
-    where: { id: 'seed-structure-bcom-y1' },
-    update: {},
-    create: {
-      id: 'seed-structure-bcom-y1',
-      name: 'B.Com Year 1 — 2026-27',
-      branchId: main_.id,
-      courseId: courses.find((c) => c.code === 'BCOM')!.id,
-      batchId: batch.id,
-      courseYear: 1,
-      graceDays: 7,
-      lateFeePerDayPaise: 2000, // ₹20/day
-      lateFeeMaxPaise: 200000, // capped at ₹2,000
-      items: {
-        create: [
-          { feeTypeId: appFee.id, amountPaise: 50000, installmentNo: 1, dueAfterDays: 0 },
-          { feeTypeId: tuition.id, amountPaise: 1500000, installmentNo: 1, dueAfterDays: 15 },
-          { feeTypeId: tuition.id, amountPaise: 1500000, installmentNo: 2, dueAfterDays: 120 },
-          { feeTypeId: examFee.id, amountPaise: 300000, installmentNo: 3, dueAfterDays: 210 },
-        ],
+  // One Year-1 structure per course, so every demo student can be assigned
+  // one. Tuition varies by course type to look like a real fee card.
+  const tuitionByCode: Record<string, number> = {
+    BCOM: 1500000,
+    BBA: 1800000,
+    BCA: 2000000,
+    MCOM: 2200000,
+    MBA: 3500000,
+    DCA: 900000,
+  }
+
+  const structures = new Map<string, string>()
+  for (const course of courses) {
+    const perInstallment = tuitionByCode[course.code] ?? 1500000
+    const id = `seed-structure-${course.code.toLowerCase()}-y1`
+    const created = await db.feeStructure.upsert({
+      where: { id },
+      update: {},
+      create: {
+        id,
+        name: `${course.name} Year 1 — ${batch.name}`,
+        branchId: null, // available to every branch
+        courseId: course.id,
+        batchId: batch.id,
+        courseYear: 1,
+        graceDays: 7,
+        lateFeePerDayPaise: 2000, // Rs 20/day
+        lateFeeMaxPaise: 200000, // capped at Rs 2,000
+        items: {
+          create: [
+            { feeTypeId: appFee.id, amountPaise: 50000, installmentNo: 1, dueAfterDays: 0 },
+            { feeTypeId: tuition.id, amountPaise: perInstallment, installmentNo: 1, dueAfterDays: 15 },
+            { feeTypeId: tuition.id, amountPaise: perInstallment, installmentNo: 2, dueAfterDays: 120 },
+            { feeTypeId: examFee.id, amountPaise: 300000, installmentNo: 3, dueAfterDays: 210 },
+          ],
+        },
       },
-    },
-  })
+    })
+    structures.set(course.id, created.id)
+  }
+  const structure = { id: structures.get(courses[0]!.id)! }
 
   // --------------------------------------------------------- demo enquiry data
   const firstNames = ['Aiswarya','Rahul','Fathima','Arjun','Nikhil','Sneha','Vishnu','Anjana','Hari','Meera','Sachin','Divya','Ashwin','Reshma','Jithin','Gokul','Lakshmi','Nandana','Vivek','Athira','Sreehari','Parvathy','Akhil','Neethu']

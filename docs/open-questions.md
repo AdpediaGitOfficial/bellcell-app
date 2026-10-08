@@ -10,11 +10,19 @@ much rework the answer causes if it arrives late.
    (ADR-002). If it is genuinely single-branch, we keep the model and hide
    the switcher — no rework either way, but confirm.
 
-2. **Fee structure.** Per course+batch+year, or per student? How many
-   instalments? Are there concessions/scholarships, and who approves them? Are
-   there late fines, with what grace period and cap? Refund policy on dropout?
-   *Currently modelled generously; the master data needs the institute's real
-   numbers.*
+2. **Fee structure.** *Still the highest-rework item.* The engine is built
+   and tested, but these assumptions are ours, not the institute's:
+   - Structures are per **course + batch + year** (optionally per branch).
+   - Payments settle the **oldest instalment first** unless the office ticks
+     specific ones.
+   - A payment that exceeds the balance is **refused**, not banked as an
+     advance. *If the institute does take advances, this needs a design.*
+   - Late fee is **per day after a grace period, with a cap** — set per
+     structure; no institute numbers yet.
+   - Concessions need **ADMIN approval** and cannot exceed the balance.
+   - **Refunds on dropout are modelled but no policy is implemented** — who
+     approves, what is non-refundable, over what period?
+   Confirm each, and supply the real fee card per course.
 
 3. **Does fee collection post to Accounts automatically?** We say yes
    (ADR-003). Confirm the institute's accountant agrees, since it changes how
