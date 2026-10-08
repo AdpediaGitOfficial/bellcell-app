@@ -220,3 +220,69 @@ instalment, and every concession stores its reason and approver.
 
 **Why.** A discount is money the institute chooses not to collect. Letting
 whoever handles the cash also grant it removes the only control over it.
+
+---
+
+## ADR-016 — Certificate custody is a state machine with an append-only log
+
+**Context.** The quotation gave "Return Certificate" four lines. It is the
+highest legal-risk area in the system: the institute physically holds
+students' original SSLC, Plus Two and degree certificates.
+
+**Decision.**
+- `ALLOWED_TRANSITIONS` in `certificates/queries.ts` is the **server-side**
+  guard. The action consults it before writing, so hiding a menu option is
+  never the only thing preventing an illegal move — notably, a document
+  cannot go from "sent to university" straight to "returned to student".
+- Every movement appends a `CertificateCustodyEvent` (never updates one) and
+  an audit entry naming who moved it.
+- Handing back to a student **requires** a "received by" name.
+- "Returned to student" and "Lost" are terminal; a mistake is corrected by
+  opening a new custody record, not by rewriting history.
+- A qualification cannot be deleted from a student's Education tab while the
+  institute still holds the original.
+
+**Why.** The question this screen must answer at any moment is "where is this
+student's original, and who had it last?". Anything less is not a custody
+record.
+
+---
+
+## ADR-017 — Notifications are recorded before a gateway exists
+
+**Decision.** `src/lib/notify.ts` writes a `NotificationLog` row for every
+message the system would send, marked SKIPPED while no gateway is configured.
+
+**Why.** The screens then behave exactly as they will once a gateway is
+wired in; the institute can see the message volume it is about to pay for;
+and nothing is silently lost in the meantime. For SMS in India, DLT
+sender-ID and template registration must be completed in Bell Cell's own
+name first — see docs/open-questions.md #6.
+
+---
+
+## ADR-018 — Roll numbers belong to a course year, and promotion frees them
+
+**Decision.** `RollNumber` is unique per (section, number, course year).
+Promoting a student releases the number held for the year they are leaving;
+new numbers are allocated for the new year on the Roll Numbers screen.
+Transferring course also frees the number, since it belonged to the old
+course.
+
+**Why.** Carrying a number forward silently would produce duplicates within a
+year. Releasing rather than deleting keeps the record of who held what.
+
+**Note.** Reallocating a freed number deletes the released row before
+creating the new one, because the unique constraint does not exempt released
+rows. The history survives in the audit log, which recorded the release.
+
+---
+
+## ADR-019 — Issuing study material cannot take stock negative
+
+**Decision.** The issue happens inside a transaction that checks availability
+and increments `stockIssued`; it is refused if it would exceed `stockTotal`.
+A `stockTotal` of 0 means "not tracked" and skips the check.
+
+**Why.** If the register can disagree with the shelf, the "study material
+issue summary" report becomes fiction.

@@ -536,6 +536,156 @@ async function main() {
     console.log('  · 34 students with fees, receipts and ledger postings')
   }
 
+  // ------------------------------------------- admissions workflow demo data
+  const certTypes = await db.certificateType.findMany({
+    where: { code: { in: ['CT-SSLC', 'CT-PLUS2', 'CT-TC'] } },
+  })
+  const allStudents = await db.student.findMany({
+    select: { id: true, affiliationBodyId: true },
+  })
+
+  if ((await db.certificateCustody.count()) === 0 && certTypes.length > 0) {
+    const states = [
+      'WITH_INSTITUTE',
+      'WITH_INSTITUTE',
+      'SENT_FOR_VERIFICATION',
+      'RETURNED_FROM_AFFILIATION',
+      'RETURNED_TO_STUDENT',
+    ] as const
+
+    for (const student of allStudents.slice(0, 22)) {
+      const type = pick(certTypes)
+      const status = pick(states)
+      const collectedAt = daysAgo(int(20, 90))
+
+      const custody = await db.certificateCustody.create({
+        data: {
+          studentId: student.id,
+          certificateTypeId: type.id,
+          affiliationBodyId: student.affiliationBodyId,
+          status,
+          collectedAt,
+          sentAt: status === 'WITH_INSTITUTE' ? null : daysAgo(int(10, 19)),
+          returnedAt: ['RETURNED_FROM_AFFILIATION', 'RETURNED_TO_STUDENT'].includes(status)
+            ? daysAgo(int(3, 9))
+            : null,
+          handedBackAt: status === 'RETURNED_TO_STUDENT' ? daysAgo(int(0, 2)) : null,
+        },
+      })
+
+      await db.certificateCustodyEvent.create({
+        data: {
+          custodyId: custody.id,
+          toStatus: 'WITH_INSTITUTE',
+          occurredAt: collectedAt,
+          remarks: 'Original collected at admission',
+        },
+      })
+      if (status !== 'WITH_INSTITUTE') {
+        await db.certificateCustodyEvent.create({
+          data: {
+            custodyId: custody.id,
+            fromStatus: 'WITH_INSTITUTE',
+            toStatus: 'SENT_FOR_VERIFICATION',
+            occurredAt: daysAgo(int(10, 19)),
+            remarks: 'Sent for university verification',
+          },
+        })
+      }
+    }
+    console.log('  · 22 certificate custody records')
+  }
+
+  if ((await db.studentIdCard.count()) === 0) {
+    const cardStates = [
+      'REQUESTED',
+      'REQUESTED',
+      'SENT_TO_AFFILIATION',
+      'RECEIVED',
+      'RECEIVED',
+      'STUDENT_NOTIFIED',
+      'COLLECTED',
+    ] as const
+
+    for (const student of allStudents.slice(0, 26)) {
+      const status = pick(cardStates)
+      const requestedAt = daysAgo(int(15, 60))
+      await db.studentIdCard.create({
+        data: {
+          studentId: student.id,
+          status,
+          requestedAt,
+          cardNumber:
+            status === 'REQUESTED' || status === 'SENT_TO_AFFILIATION'
+              ? null
+              : `BC${int(10000, 99999)}`,
+          receivedAt: ['RECEIVED', 'STUDENT_NOTIFIED', 'COLLECTED'].includes(status)
+            ? daysAgo(int(4, 12))
+            : null,
+          notifiedAt: ['STUDENT_NOTIFIED', 'COLLECTED'].includes(status)
+            ? daysAgo(int(2, 5))
+            : null,
+          collectedAt: status === 'COLLECTED' ? daysAgo(int(0, 2)) : null,
+        },
+      })
+    }
+    console.log('  · 26 ID card records')
+  }
+
+  if ((await db.studyMaterial.count()) === 0) {
+    const materialSpecs: [string, string, string, number][] = [
+      ['SM-BCOM-1', 'B.Com Year 1 Textbook Set', 'BCOM', 40],
+      ['SM-BCA-1', 'BCA Year 1 Lab Manual', 'BCA', 25],
+      ['SM-MBA-1', 'MBA Case Study Pack', 'MBA', 15],
+      ['SM-SYL-26', 'University Syllabus 2026-27', '', 0],
+      ['SM-KIT', 'Student Welcome Kit', '', 60],
+    ]
+    for (const [code, title, courseCode, stock] of materialSpecs) {
+      const course = courseCode ? courses.find((c) => c.code === courseCode) : null
+      await db.studyMaterial.create({
+        data: {
+          code,
+          title,
+          kind: code.includes('SYL') ? 'SYLLABUS' : code.includes('KIT') ? 'KIT' : 'BOOK',
+          courseId: course?.id ?? null,
+          stockTotal: stock,
+        },
+      })
+    }
+
+    const kit = await db.studyMaterial.findUnique({ where: { code: 'SM-KIT' } })
+    if (kit) {
+      for (const student of allStudents.slice(0, 12)) {
+        await db.studyMaterialIssue.create({
+          data: { studentId: student.id, materialId: kit.id, quantity: 1, issuedAt: daysAgo(int(1, 40)) },
+        })
+      }
+      await db.studyMaterial.update({
+        where: { id: kit.id },
+        data: { stockIssued: Math.min(12, allStudents.length) },
+      })
+    }
+    console.log('  · 5 study materials, 12 issued')
+  }
+
+  if ((await db.classSection.count()) === 0) {
+    for (const course of courses.slice(0, 3)) {
+      for (const sectionName of ['A', 'B']) {
+        await db.classSection.create({
+          data: {
+            branchId: main_.id,
+            courseId: course.id,
+            batchId: batch.id,
+            courseYear: 1,
+            name: sectionName,
+            capacity: 60,
+          },
+        })
+      }
+    }
+    console.log('  · 6 class sections')
+  }
+
   console.log('\nSeed complete.')
   console.log(`  Sign in with any of:`)
   for (const [email, , role] of userSpecs) {

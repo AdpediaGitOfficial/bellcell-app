@@ -49,6 +49,7 @@ export const NAV: NavGroup[] = [
       { label: 'Roll Numbers', href: '/admissions/roll-numbers', resource: 'admission.rollNumber', icon: 'Hash' },
       { label: 'Certificates', href: '/admissions/certificates', resource: 'admission.certificateCustody', icon: 'ShieldCheck' },
       { label: 'Study Materials', href: '/admissions/study-materials', resource: 'admission.studyMaterial', icon: 'BookOpen' },
+      { label: 'Promotion & Transfer', href: '/admissions/promotions', resource: 'admission.promotion', icon: 'ArrowUpRight' },
     ],
   },
   {

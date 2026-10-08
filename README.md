@@ -139,9 +139,18 @@ pure logic and 9 integration tests against a real database, covering FIFO
 allocation, overpayment refusal, concurrent receipt numbering, cancellation
 and concession caps.
 
-**Next:** the remaining Admissions screens (ID cards, roll numbers,
-certificate custody workflow, study materials), then Examinations and
-Accounts.
+**Admissions — complete:**
+
+| Screen | What works |
+|---|---|
+| Certificates | Custody state machine with a server-side transition guard, append-only chain of custody, acknowledgement capture, bulk dispatch, export |
+| ID Cards | Request → university → received → student informed → collected, with bulk steps and a logged SMS/email per student |
+| Roll Numbers | Sections per course/batch/year, bulk allocation skipping taken numbers, drop-and-reallocate |
+| Study Materials | Issue/return with stock that cannot go negative |
+| Promotion & Transfer | Bulk promotion (final-year students complete instead), course transfer with the fee consequence captured |
+
+**Next:** Examinations (schedule, results, TC and completion certificates),
+then Accounts (daily transactions, affiliation payments, Day Book).
 
 Open questions for the institute are tracked in
 [`docs/open-questions.md`](docs/open-questions.md). Two of them —

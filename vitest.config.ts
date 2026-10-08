@@ -9,6 +9,11 @@ export default defineConfig({
     exclude: ['**/node_modules/**', 'src/**/*.int.test.ts'],
   },
   resolve: {
-    alias: { '@': path.resolve(__dirname, './src') },
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+      // Server modules guard themselves with `server-only`; stub it so their
+      // pure exports (transition maps, label tables) can be unit tested.
+      'server-only': path.resolve(__dirname, './test/server-only-stub.ts'),
+    },
   },
 })
