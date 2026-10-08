@@ -136,3 +136,31 @@ categorical slots — measured teal↔sky ΔE 11.6 for normal vision and
 amber↔lime 4.9 under protanopia. The supplied reference dashboard pairs teal
 with pink at ΔE 3.1 under deuteranopia, which ~8% of men cannot distinguish.
 See `docs/design-system.md` §3.2.
+
+---
+
+## ADR-010 — Creating a record in "All branches" mode asks which branch
+
+**Context.** A `SUPER_ADMIN` viewing "All branches" has no single branch in
+context, so `writeBranchId` had nothing to write and threw — breaking every
+create path with a 500.
+
+**Decision.** `writeBranchId(user, explicit?)` accepts an explicit branch, and
+create forms render a required Branch picker when `needsBranchChoice(user)`.
+The submitted value is validated against the user's own branches, so a
+tampered form cannot write into a centre the user has no access to.
+
+**Why.** Failing closed is right for reads (ADR-002); for writes it has to be
+a question, not an error. Defaulting to "the first branch" would silently file
+a lead under the wrong centre, which is worse than asking.
+
+---
+
+## ADR-011 — One generic implementation for the 19 masters
+
+**Decision.** `masters/actions.ts` plus `MasterTable.tsx` serve every master
+screen; each master page is a thin wrapper supplying its rows and labels.
+
+**Why.** The masters are structurally identical — a name, occasionally a flag
+or two, add/edit/archive. Nineteen near-copies would be nineteen places to fix
+the same bug. The index page at `/masters` keeps them to one nav entry.

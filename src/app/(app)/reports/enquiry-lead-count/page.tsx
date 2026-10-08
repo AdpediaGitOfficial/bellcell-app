@@ -1,0 +1,73 @@
+import type { Metadata } from 'next'
+import Link from 'next/link'
+import { notFound } from 'next/navigation'
+import { ArrowLeft } from 'lucide-react'
+import { requireUser } from '@/lib/auth/current-user'
+import { can } from '@/lib/rbac/can'
+import type { SearchParams } from '@/lib/table/params'
+import { Card } from '@/components/ui/Card'
+import { PageHeader } from '@/components/shell/PageHeader'
+import { ReportControls } from '../ReportControls'
+import { CountReportTable } from '../CountReportTable'
+import { leadCountReport, parseRange } from '../queries'
+
+export const metadata: Metadata = { title: 'Enquiry Lead Count' }
+
+const BASE = '/reports/enquiry-lead-count'
+const GROUPS = ['counsellor', 'source', 'course', 'branch'] as const
+type Group = (typeof GROUPS)[number]
+
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<SearchParams>
+}) {
+  const user = await requireUser()
+  if (!can(user, 'reports', 'view')) notFound()
+
+  const sp = await searchParams
+  const range = parseRange(sp)
+  const raw = typeof sp.groupBy === 'string' ? sp.groupBy : ''
+  const groupBy: Group = (GROUPS as readonly string[]).includes(raw)
+    ? (raw as Group)
+    : 'counsellor'
+
+  const rows = await leadCountReport(user, range, groupBy)
+
+  const label =
+    groupBy === 'counsellor'
+      ? 'Counsellor'
+      : groupBy === 'source'
+        ? 'Source'
+        : groupBy === 'course'
+          ? 'Course'
+          : 'Branch'
+
+  return (
+    <>
+      <Link
+        href="/reports"
+        className="mb-3 inline-flex items-center gap-1.5 text-sm text-muted hover:text-strong"
+      >
+        <ArrowLeft className="h-4 w-4" aria-hidden />
+        All reports
+      </Link>
+
+      <PageHeader
+        eyebrow="Reports"
+        title="Enquiry Lead Count"
+        subtitle="Total raw leads captured in the period, and how many became enquiries."
+      />
+
+      <Card className="overflow-hidden">
+        <ReportControls
+          basePath={BASE}
+          fromISO={range.fromISO}
+          toISO={range.toISO}
+          groupBy={groupBy}
+        />
+        <CountReportTable rows={rows} dimensionLabel={label} showStages={false} />
+      </Card>
+    </>
+  )
+}

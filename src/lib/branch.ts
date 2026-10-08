@@ -20,12 +20,40 @@ export function branchScope(user: CurrentUser): { branchId?: string } {
   return { branchId: user.activeBranchId }
 }
 
-/** The branch a newly created record belongs to. Throws when ambiguous. */
-export function writeBranchId(user: CurrentUser): string {
-  if (!user.activeBranchId) {
-    throw new Error('No active branch selected; cannot create branch-scoped record')
+/**
+ * Raised when a record must be created but no single branch is in context —
+ * which happens whenever a SUPER_ADMIN is viewing "All branches". Callers
+ * catch this and ask the user which branch, rather than failing with a 500.
+ */
+export class NoBranchSelectedError extends Error {
+  constructor() {
+    super('No active branch selected; cannot create branch-scoped record')
+    this.name = 'NoBranchSelectedError'
   }
+}
+
+/**
+ * The branch a newly created record belongs to.
+ *
+ * `explicit` comes from a branch picker that create forms render when the
+ * user is in all-branches mode. It is validated against the user's own
+ * branches, so a tampered form value cannot write into another centre.
+ */
+export function writeBranchId(
+  user: CurrentUser,
+  explicit?: string | null,
+): string {
+  if (explicit) {
+    if (!canAccessBranch(user, explicit)) throw new NoBranchSelectedError()
+    return explicit
+  }
+  if (!user.activeBranchId) throw new NoBranchSelectedError()
   return user.activeBranchId
+}
+
+/** True when create forms must ask the user to pick a branch. */
+export function needsBranchChoice(user: CurrentUser): boolean {
+  return user.activeBranchId === null && user.branches.length > 0
 }
 
 export function canAccessBranch(user: CurrentUser, branchId: string): boolean {

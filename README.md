@@ -98,12 +98,32 @@ docs/                     analysis, decisions, design system, open questions
 
 ## Status
 
-Built: data model, auth + sessions, RBAC, branch scoping, audit trail, app
-shell, dashboard.
+**Foundation** — data model (54 tables), auth + sessions, RBAC, branch
+scoping, audit trail, app shell, dashboard.
 
-Next: Enquiry module screens (leads with bulk import, enquiries, call
-schedule, counselling), then the shared `DataTable` + export layer that the
-remaining ~50 screens depend on.
+**Shared list layer** — `DataTable` (sticky header and first column, density
+toggle, URL-driven sort), `FilterBar`, `Pagination`, `EmptyState`, and CSV +
+XLSX export. Every list screen is built from these, so the remaining modules
+are mostly queries and columns.
+
+**Enquiry module — complete:**
+
+| Screen | What works |
+|---|---|
+| Leads | List, search, 5 filters, sort, pagination, add/edit, call logging, convert to enquiry, archive, export |
+| Leads → Import | CSV bulk import with tolerant header matching, phone normalisation, per-row error reporting and dedupe |
+| Enquiries | List + funnel summary, stage transitions, call logging, detail page with full call history |
+| Call Schedule | Same engine, preset to overdue/due-today |
+| Counselling | Same engine, preset to the two counselling stages (ADR-004) |
+| Masters | Enquiry call status, Nature of enquiry — add/edit/archive/restore with usage counts |
+| Reports | Enquiry Count and Enquiry Lead Count, grouped by counsellor/source/course/branch with conversion rates |
+
+Unbuilt modules in the signed scope resolve to an honest "not built yet"
+screen rather than a 404, and `/masters` and `/reports` mark planned entries.
+
+**Next:** the Application module — the student record, then the fee engine.
 
 Open questions for the institute are tracked in
-[`docs/open-questions.md`](docs/open-questions.md).
+[`docs/open-questions.md`](docs/open-questions.md). Two of them —
+**fee structure** and **whether payroll is in scope** — cause real rework if
+answered late.
