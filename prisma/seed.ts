@@ -8,7 +8,7 @@
  * NOT for production. Production starts from masters only, with no demo rows
  * and no default passwords.
  */
-import { PrismaClient, type Prisma } from '@prisma/client'
+import { Prisma, PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 
 const db = new PrismaClient()
@@ -783,6 +783,131 @@ async function main() {
       })
     }
     console.log('  · 3 affiliation remittances')
+  }
+
+  // ------------------------------------------------- examinations demo data
+  if ((await db.subject.count()) === 0) {
+    const subjectSpecs: [string, string, string][] = [
+      ['BCOM101', 'Financial Accounting', 'BCOM'],
+      ['BCOM102', 'Business Management', 'BCOM'],
+      ['BCOM103', 'Business Economics', 'BCOM'],
+      ['BCOM104', 'Business Communication', 'BCOM'],
+      ['BCA101', 'Programming Fundamentals', 'BCA'],
+      ['BCA102', 'Digital Logic', 'BCA'],
+      ['BCA103', 'Mathematics I', 'BCA'],
+      ['MBA101', 'Organisational Behaviour', 'MBA'],
+      ['MBA102', 'Managerial Economics', 'MBA'],
+    ]
+    for (const [code, name, courseCode] of subjectSpecs) {
+      const course = courses.find((c) => c.code === courseCode)
+      if (!course) continue
+      await db.subject.create({
+        data: {
+          code,
+          name,
+          courseId: course.id,
+          courseTypeId: course.courseTypeId,
+          courseYear: 1,
+          maxMarks: 100,
+          // A practical-heavy paper needs more to pass; the rest take 35.
+          passMarks: code.endsWith('04') ? 40 : 35,
+        },
+      })
+    }
+    console.log(`  · ${subjectSpecs.length} subjects`)
+  }
+
+  if ((await db.examSchedule.count()) === 0) {
+    const centre = await db.examCentre.findFirst()
+    const bcom = courses.find((c) => c.code === 'BCOM')!
+    const bca = courses.find((c) => c.code === 'BCA')!
+
+    for (const [course, name, term, offset, published] of [
+      [bcom, 'B.Com Year 1 — Mid Term 2026', 'MID_TERM', -40, true],
+      [bcom, 'B.Com Year 1 — Annual 2026', 'ANNUAL', 25, false],
+      [bca, 'BCA Year 1 — Mid Term 2026', 'MID_TERM', -30, true],
+    ] as const) {
+      const subjects = await db.subject.findMany({
+        where: { courseId: course.id, courseYear: 1 },
+        orderBy: { code: 'asc' },
+      })
+      const start = daysAgo(-offset)
+      const schedule = await db.examSchedule.create({
+        data: {
+          branchId: main_.id,
+          name,
+          courseId: course.id,
+          batchId: batch.id,
+          courseYear: 1,
+          term,
+          examCentreId: centre?.id ?? null,
+          startDate: start,
+          endDate: daysAgo(-(offset + subjects.length)),
+          isPublished: published,
+          subjects: {
+            create: subjects.map((sub, i) => ({
+              subjectId: sub.id,
+              examDate: daysAgo(-(offset + i)),
+              startTime: '10:00',
+              endTime: '13:00',
+              maxMarks: sub.maxMarks,
+            })),
+          },
+        },
+      })
+
+      // Marks for the two mid-terms, which have already happened.
+      if (term !== 'MID_TERM') continue
+
+      const cohort = await db.student.findMany({
+        where: { courseId: course.id, courseYear: 1, branchId: main_.id },
+        take: 20,
+        select: { id: true },
+      })
+
+      for (const student of cohort) {
+        const rows = subjects.map((sub) => {
+          const absent = rand() < 0.06
+          // Most students pass; a tail does not.
+          const marks = absent ? null : rand() < 0.15 ? int(12, 34) : int(38, 96)
+          return { subject: sub, marks, absent }
+        })
+
+        const total = rows.reduce((t, r) => t + (r.marks ?? 0), 0)
+        const max = rows.reduce((t, r) => t + r.subject.maxMarks, 0)
+        const pct = max > 0 ? Math.round((total / max) * 10000) / 100 : 0
+        const anyAbsent = rows.some((r) => r.absent)
+        const anyFail = rows.some((r) => !r.absent && (r.marks ?? 0) < r.subject.passMarks)
+        const allAbsent = rows.every((r) => r.absent)
+        const status = allAbsent ? 'ABSENT' : anyFail || anyAbsent ? 'FAIL' : 'PASS'
+        const grade =
+          status !== 'PASS'
+            ? 'F'
+            : pct >= 90 ? 'A+' : pct >= 80 ? 'A' : pct >= 70 ? 'B+' : pct >= 60 ? 'B' : pct >= 50 ? 'C' : 'D'
+
+        await db.examResult.create({
+          data: {
+            scheduleId: schedule.id,
+            studentId: student.id,
+            totalMarks: total,
+            maxMarks: max,
+            percentage: new Prisma.Decimal(pct),
+            grade,
+            status,
+            publishedAt: published ? daysAgo(5) : null,
+            subjects: {
+              create: rows.map((r) => ({
+                subjectId: r.subject.id,
+                marks: r.marks,
+                maxMarks: r.subject.maxMarks,
+                isAbsent: r.absent,
+              })),
+            },
+          },
+        })
+      }
+    }
+    console.log('  · 3 examinations with marks for the completed ones')
   }
 
   console.log('\nSeed complete.')

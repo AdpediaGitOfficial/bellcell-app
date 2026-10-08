@@ -158,9 +158,30 @@ and concession caps.
 | Day Book | Every rupee from every module, with opening/closing balances derived from the ledger and the identity proved on screen |
 | Masters | Account heads (type decides direction of money) and bank accounts |
 
-**Next:** Examinations — schedule, results, TC and completion certificates.
-Note that the quotation is thinnest here: it says "publish the result" with no
-mark entry, grade configuration or hall tickets (open question #10).
+**Examinations — complete:**
+
+| Screen | What works |
+|---|---|
+| Exam Schedule | Create an examination, build its timetable paper by paper, publish (which locks it), print as a notice |
+| Results | Cohort mark-entry grid with absent handling, server-side validation, derived grades and overall status, withholding, publish |
+| Certificates Issued | TC and course-completion certificates with gapless numbering, printable, collection recorded |
+| Reports | Examination Schedule & Result Summary, Student Certificate Summary (issued + originals held) |
+
+⚠ **Every examination rule is an assumption** — the quotation defines none of
+them. They are isolated in `src/lib/exams/core.ts` and listed for
+confirmation in [open question #10](docs/open-questions.md). Changing one is a
+change to that single file.
+
+---
+
+## All four quoted modules are built
+
+Enquiry · Application (admissions + fees) · Employee (records; payroll and
+attendance were never in scope — open question #4) · Accounts.
+
+Remaining gaps are listed in [`docs/open-questions.md`](docs/open-questions.md).
+The ones that cost real rework if answered late are **#2 (fee structure)** and
+**#10 (examination rules)**.
 
 Open questions for the institute are tracked in
 [`docs/open-questions.md`](docs/open-questions.md). Two of them —

@@ -2,11 +2,13 @@ import 'server-only'
 import { Prisma } from '@prisma/client'
 import { financialYearFor, formatReceiptNo } from '@/lib/fees/core'
 
-export type NumberSeries = 'RECEIPT' | 'VOUCHER'
+export type NumberSeries = 'RECEIPT' | 'VOUCHER' | 'TC' | 'COMPLETION'
 
 export const SERIES_PREFIX: Record<NumberSeries, string> = {
   RECEIPT: 'RC',
   VOUCHER: 'VCH',
+  TC: 'TC',
+  COMPLETION: 'CC',
 }
 
 /**

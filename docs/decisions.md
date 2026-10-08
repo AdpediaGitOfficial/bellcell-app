@@ -350,3 +350,72 @@ been remitted, per fee type.
 over-remittance shows as a negative rather than being clamped to zero, and a
 remittance recorded without a fee type is called out separately as excluded
 from the reconciliation — both are anomalies worth seeing.
+
+---
+
+## ADR-024 — Every examination rule is an assumption, isolated in one file
+
+**Context.** The quotation says only "this module is to publish the result of
+exams conducted". It defines no grade scale, no pass rule, no aggregation, and
+nothing about absence or withheld results.
+
+**Decision.** All of it lives in `src/lib/exams/core.ts`, marked as
+assumptions, with 16 unit tests pinning the behaviour. Changing a rule is a
+change to one file, not a hunt through the screens.
+
+**The assumptions, each needing confirmation (open question #10):**
+- A seven-band grade scale on the overall percentage (A+ ≥ 90 … F < 40).
+- A subject is passed on its **own** pass mark from the Subject master, not a
+  fixed 35% — a practical paper may need 50.
+- The overall total is a **straight sum of marks, not credit-weighted**. No
+  master carries credits today.
+- A student must pass **every** subject to pass overall. Many universities
+  allow a supplementary attempt in one or two papers instead; that is a
+  regulation question, not a software one.
+- **Absent is distinct from zero.** Absent counts toward the denominator but
+  contributes no marks, and a student absent in every paper reads ABSENT
+  rather than FAIL.
+- A result with any mark still unentered is **never** reported as passed.
+
+---
+
+## ADR-025 — Publishing locks, and refuses on incomplete data
+
+**Decision.** Publishing a timetable stops papers being added or removed.
+Publishing results locks the mark grid, and is refused outright while any
+mark is unentered. Both are reversible by unpublishing.
+
+**Why.** A published timetable is what students have been handed; changing it
+silently is how people turn up on the wrong day. A half-entered result
+published as "fail" is worse than no result at all.
+
+**Also guarded:** a paper cannot be removed from a timetable once marks exist
+against it, because that would discard them with no trace.
+
+---
+
+## ADR-026 — Mark validation is enforced on the server, not just the input
+
+**Decision.** `markError` runs server-side on every submitted cell. The grid's
+`max`/`min`/`step` attributes are a convenience on top.
+
+**Why.** The browser's constraint validation is trivially bypassed. Verified
+by stripping those attributes at runtime and confirming the server still
+refuses, cell by cell, with a reason attached to the offending input.
+
+---
+
+## ADR-027 — A TC cannot be issued while the institute holds the originals
+
+**Decision.** Issuing a Transfer Certificate is refused if any
+`CertificateCustody` row for that student is still WITH_INSTITUTE,
+SENT_FOR_VERIFICATION or RETURNED_FROM_AFFILIATION. The message names how
+many documents are held.
+
+**Why.** Handing a student their leaving certificate is exactly the moment
+their originals should go back. Letting the two paths run independently is
+how an institute ends up holding documents for someone who left two years
+ago — which ADR-016 exists to prevent.
+
+**Related:** a completion certificate is refused for a student who has not
+reached the final year of their course.

@@ -40,7 +40,11 @@ const REPORTS: {
       },
       { label: 'Student ID card summary', description: 'Requested, received, collected.' },
       { label: 'Study material issue summary', description: 'What was issued to whom.' },
-      { label: 'Student certificate summary', description: 'TCs and completion certificates.' },
+      {
+        label: 'Student certificate summary',
+        href: '/reports/certificate-summary',
+        description: 'Certificates issued, and originals held in custody.',
+      },
     ],
   },
   {
@@ -64,9 +68,14 @@ const REPORTS: {
   {
     group: 'Examinations',
     items: [
-      { label: 'Examination schedule & result summary', description: 'By course and term.' },
+      {
+        label: 'Examination schedule & result summary',
+        href: '/reports/exam-summary',
+        description: 'Examinations in a period, with pass rates.',
+      },
       {
         label: 'Affiliation tie-up certificate summary',
+        href: '/reports/certificate-summary',
         description: 'Originals sent to and returned from the university.',
       },
     ],

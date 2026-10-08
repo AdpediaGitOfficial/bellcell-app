@@ -55,9 +55,24 @@ much rework the answer causes if it arrives late.
 9. **Receipt numbering.** Confirm the format and whether the series resets per
    financial year (currently `RC/<FY>/<n>`, per branch, reset yearly).
 
-10. **Exam results.** The scope says "publish the result" but defines no mark
-    entry, grade configuration or pass rules. Who enters marks — the
-    university's published list, or faculty? Are hall tickets needed?
+10. **Examination rules.** *Built on assumptions — confirm before the first
+    real exam, because changing them means re-entering marks.* The scope says
+    only "publish the result". Every rule below is ours, not Bell Cell's
+    (all in `src/lib/exams/core.ts`, ADR-024):
+    - **Grade scale**: A+ ≥ 90, A ≥ 80, B+ ≥ 70, B ≥ 60, C ≥ 50, D ≥ 40,
+      else F. Is this the university's scale?
+    - **Pass mark** comes from each Subject master row, defaulting to 35.
+    - **Aggregation** is a straight total, *not credit-weighted*. If the
+      university weights by credit, the Subject master needs a credits field
+      and this changes.
+    - **Every subject must be passed** to pass overall. Does Bell Cell's
+      university allow a supplementary attempt in one or two papers?
+    - **Withholding** is manual. A "fees due" flag is shown on the mark grid
+      for information only — should unpaid fees block a result automatically?
+    - **Who enters marks** — faculty, or transcription from the university's
+      published list? The grid supports either.
+    - **Hall tickets are still not built.** Printing the timetable page gives
+      a notice, not per-student admit cards. Needed?
 
 ## To confirm — low rework cost
 
