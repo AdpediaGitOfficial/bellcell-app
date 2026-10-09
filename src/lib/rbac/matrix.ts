@@ -54,6 +54,7 @@ export const MATRIX: Record<UserRole, RoleMatrix> = {
     'accounts.affiliationPayment': CRU_EXPORT,
     'accounts.dayBook': VIEW_EXPORT,
     'people.employee': ALL,
+    'people.payroll': ALL, // including approve — see the ACCOUNTANT row
     reports: VIEW_EXPORT,
     masters: ALL,
     'settings.user': ALL,
@@ -70,6 +71,10 @@ export const MATRIX: Record<UserRole, RoleMatrix> = {
     'accounts.dailyTransaction': CRU_EXPORT,
     'accounts.affiliationPayment': CRU_EXPORT,
     'accounts.dayBook': VIEW_EXPORT,
+    // Prepares payroll but cannot approve or pay it. The person who works
+    // out what everyone is owed should not also be the person who releases
+    // it — the same separation as fee concessions above.
+    'people.payroll': CRU_EXPORT,
     reports: VIEW_EXPORT,
     masters: VIEW,
   },

@@ -74,3 +74,27 @@ describe('canView / assertCan', () => {
     expect(() => assertCan({ role: 'ADMIN' }, 'accounts.dayBook', 'view')).not.toThrow()
   })
 })
+
+describe('payroll separation of duties', () => {
+  const accountant = { role: 'ACCOUNTANT' as const }
+  const admin = { role: 'ADMIN' as const }
+  const faculty = { role: 'FACULTY' as const }
+
+  it('lets an accountant prepare a payroll run', () => {
+    expect(can(accountant, 'people.payroll', 'create')).toBe(true)
+    expect(can(accountant, 'people.payroll', 'update')).toBe(true)
+  })
+
+  it('does NOT let the same accountant approve it', () => {
+    // Whoever works out what everyone is owed must not also release it.
+    expect(can(accountant, 'people.payroll', 'approve')).toBe(false)
+  })
+
+  it('lets an administrator approve', () => {
+    expect(can(admin, 'people.payroll', 'approve')).toBe(true)
+  })
+
+  it('keeps payroll away from teaching staff entirely', () => {
+    expect(can(faculty, 'people.payroll', 'view')).toBe(false)
+  })
+})

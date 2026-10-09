@@ -99,6 +99,10 @@ docs/                     analysis, decisions, design system, open questions
 - **Logins are administered only through `src/lib/rbac/roles.ts`** — role
   ceilings, self-modification and the last-super-admin guard live there, with
   tests (ADR-029).
+- **Payroll figures are written down, never recomputed on read.** A rate
+  change must not restate what someone was already paid (ADR-033).
+- **Only net pay and the employer's own contribution reach the ledger** —
+  never the gross, which is not an outflow (ADR-035).
 - **Money moves only through `src/lib/fees/service.ts`**, inside a
   transaction. Never write `paidPaise` or a ledger row by hand.
 - **Brand `#00A59F` is never a background for small white text** (3.05:1,
@@ -192,25 +196,45 @@ Archiving an employee who holds a login disables that account and ends its
 sessions in the same transaction — an archived employee with a live login is
 exactly the gap nobody notices.
 
-⚠ **Payroll and attendance are not built.** The quotation's own introduction
-mentioned "Salary Details" and "Work Schedule" but listed no screens, fields
-or rules for either. The Employees screen says so on the page rather than
-leaving staff to hunt for a tab that was never specified — see
-[open question #4](docs/open-questions.md). Salary paid out is recorded today
-as a voucher under the Salary account head.
+**Payroll — complete:**
+
+| Screen | What works |
+|---|---|
+| Payroll | Run list with net paid to date, and a standing count of staff who have no salary structure and would be skipped |
+| Payroll run | A drafted payslip per employee, unpaid-days entry, who was left out and why, approve, pay, cancel with a reason |
+| Payslip | Printable earnings/deductions sheet, with employer contributions shown separately as *not* a deduction |
+| Salary register | Per-run XLSX/CSV with a column per component that actually appeared |
+| Employee → Salary | Dated salary structures with full history; a revision closes the old one rather than editing it |
+| Payroll settings | PF, ESI and professional tax switched on per branch with their own rates, ceilings and slabs |
+| Masters | Salary components — fixed, percent-of-basic or percent-of-gross, with PF-wage-base and pro-rating flags |
+
+**The payroll engine** (`src/lib/payroll/`) is the critical code here: 45 unit
+tests on the pure calculation and 20 integration tests against a real
+database, covering pro-rating, the PF wage ceiling, ESI's eligibility cut-off
+and round-up rule, professional-tax slabs, dated structures, frozen approved
+runs, and what reaches the ledger.
+
+⚠ **Nothing statutory is deducted until someone switches it on** (ADR-032),
+because the opposite default silently withholds money an unregistered
+institute would never remit. ⚠ **Income tax is not computed** (ADR-034) — the
+monthly figure is entered from the institute's accountant, for reasons the
+settings screen states. ⚠ **Attendance is still not built**, so unpaid days
+are typed on the run (ADR-037).
 
 ---
 
 ## All four quoted modules are built
 
-Enquiry · Application (admissions + fees) · Employee (records; payroll and
-attendance were never in scope — open question #4) · Accounts.
+Enquiry · Application (admissions + fees) · Employee (records, logins and
+payroll) · Accounts. Attendance remains out of scope — open question #4.
 
-Remaining gaps are listed in [`docs/open-questions.md`](docs/open-questions.md).
-The ones that cost real rework if answered late are **#2 (fee structure)** and
-**#10 (examination rules)**.
+Remaining gaps are tracked in
+[`docs/open-questions.md`](docs/open-questions.md). Three of them matter more
+than the rest:
 
-Open questions for the institute are tracked in
-[`docs/open-questions.md`](docs/open-questions.md). Two of them —
-**fee structure** and **whether payroll is in scope** — cause real rework if
-answered late.
+- **#4 payroll** — now the highest risk, because a wrong statutory answer is
+  money owed to the EPFO, ESIC or the state. Nothing is deducted until the
+  institute switches it on, so the cost of the question stays at zero until
+  someone does.
+- **#2 fee structure** — the most rework if answered late.
+- **#10 examination rules** — every grading rule is ours, not Bell Cell's.

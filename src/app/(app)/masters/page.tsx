@@ -78,6 +78,11 @@ const MASTERS: {
         href: '/masters/departments',
         description: 'Administration, Commerce, Computer Science',
       },
+      {
+        label: 'Salary component',
+        href: '/masters/salary-components',
+        description: 'Basic, DA, HRA, allowances and recoveries',
+      },
       { label: 'Religion', description: 'Used on the admission form' },
     ],
   },

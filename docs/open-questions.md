@@ -28,16 +28,37 @@ much rework the answer causes if it arrives late.
    (ADR-003). Confirm the institute's accountant agrees, since it changes how
    the Day Book reads.
 
-4. **Is payroll/attendance in scope?** The vendor's Employee section promises
-   "Salary Details, Work Schedule" and then lists no screens for either.
-   **Currently out of scope here**, and the Employees screen says so on the
-   page rather than leaving staff to hunt for a tab. If it is wanted, it is a
-   module, not a screen, and it needs answers first: what salary components
-   (basic, DA, HRA, allowances), what statutory deductions (PF, ESI, TDS —
-   each with its own rules and returns), monthly or daily wage, and does
-   payroll depend on an attendance system that is also not in scope?
-   Salary paid out is recorded today as a voucher under the Salary account
-   head, which is enough for the Day Book to balance but is not payroll.
+4. **Payroll — built on assumptions; confirm before the first real run.**
+   *This is now the highest-risk unanswered item, because a wrong answer is
+   money owed to a statutory authority, not an embarrassing screen.* Payroll
+   is built (components, dated salary structures, runs, payslips, salary
+   register, posting to the Day Book). Nothing statutory is deducted until it
+   is switched on, so an unanswered question costs nothing until someone
+   enables it — but these must be answered before anyone does:
+   - **Is the institute registered for PF?** If so, confirm the employee and
+     employer rates, the establishment code, and whether contributions are on
+     the wage ceiling or on full wages above it.
+   - **Is it covered by ESI?** Confirm the rates and the eligibility limit.
+   - **Does the PF wage ceiling pro-rate for a part month?** The code does
+     NOT pro-rate it; EPFO guidance has been read both ways and the
+     institute's PF consultant should settle it. One function changes.
+   - **ESI contribution periods are not modelled.** Someone who crosses the
+     threshold mid-period should keep contributing to the period's end. We
+     test eligibility month by month. Needed?
+   - **Professional tax**: the slabs are assumed half-yearly (Kerala's basis)
+     and deducted in September and March. Confirm the state, the slabs and
+     the basis.
+   - **Pay basis**: calendar days (27/30 for three unpaid days) or a fixed
+     26-day month? Set per branch; nobody has chosen.
+   - **Does the employer's PF share need its EPS split** (8.33% to the
+     pension scheme) for the ECR filing? Not modelled.
+   - **Income tax is deliberately not computed** (ADR-034) — the monthly
+     figure is typed in. Is a TDS module wanted, with Form 16 and quarterly
+     returns? That is a project of its own.
+
+4a. **Attendance is still not built**, so unpaid days are typed on the payroll
+   run rather than counted from a register. Is an attendance module wanted,
+   and if so does payroll take its loss-of-pay days from it automatically?
 
 5. **Permission matrix sign-off.** `src/lib/rbac/matrix.ts` is a proposal.
    Print it and have the principal sign it. Specifically: should a counsellor
@@ -113,6 +134,8 @@ much rework the answer causes if it arrives late.
 
 ## Explicitly out of scope in this build
 
-Student attendance · timetable · library · hostel · transport · biometric ·
-payroll · alumni/placement · inventory · mobile app (responsive web only) ·
-online payment gateway · student/parent portal.
+Student attendance · staff attendance · timetable · library · hostel ·
+transport · biometric · automatic TDS computation and Form 16 ·
+alumni/placement · inventory · mobile app (responsive web only) ·
+online payment gateway · student/parent portal (so staff cannot see their own
+payslips — only the office can).

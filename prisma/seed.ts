@@ -1071,6 +1071,87 @@ async function main() {
     console.log('  · 3 examinations with marks for the completed ones')
   }
 
+
+  // ----------------------------------------------------------------- payroll
+  // Components and salary structures, but deliberately NO statutory settings:
+  // a seeded database must not pretend the institute is registered for PF.
+  // Switching that on is a decision someone makes on the settings screen.
+  const componentSpecs: [string, string, 'EARNING' | 'DEDUCTION', string, number, boolean, boolean][] = [
+    // code, name, kind, calculation, sortOrder, partOfBasic, proRated
+    ['BASIC', 'Basic pay', 'EARNING', 'FIXED', 1, true, true],
+    ['DA', 'Dearness allowance', 'EARNING', 'FIXED', 2, true, true],
+    ['HRA', 'House rent allowance', 'EARNING', 'PERCENT_OF_BASIC', 3, false, true],
+    ['CONV', 'Conveyance allowance', 'EARNING', 'FIXED', 4, false, true],
+    ['SPL', 'Special allowance', 'EARNING', 'FIXED', 5, false, true],
+    ['PHONE', 'Phone reimbursement', 'EARNING', 'FIXED', 6, false, false],
+    ['ADV', 'Salary advance recovery', 'DEDUCTION', 'FIXED', 20, false, false],
+  ]
+
+  const components = new Map<string, string>()
+  for (const [code, name, kind, calculation, sortOrder, partOfBasic, proRated] of componentSpecs) {
+    const row = await db.salaryComponent.upsert({
+      where: { code },
+      update: {},
+      create: {
+        code,
+        name,
+        kind,
+        calculation: calculation as 'FIXED' | 'PERCENT_OF_BASIC',
+        percentage: code === 'HRA' ? new Prisma.Decimal('40') : null,
+        partOfBasic,
+        proRated,
+        sortOrder,
+      },
+    })
+    components.set(code, row.id)
+  }
+
+  // Basic pay by designation, so the demo register is not seven identical rows.
+  const salaryByCode: Record<string, { basic: number; da: number; conv: number; spl: number }> = {
+    'EMP-001': { basic: 6500000, da: 1500000, conv: 300000, spl: 500000 }, // Principal
+    'EMP-002': { basic: 3200000, da: 800000, conv: 200000, spl: 200000 },
+    'EMP-003': { basic: 3800000, da: 900000, conv: 200000, spl: 300000 },
+    'EMP-004': { basic: 2800000, da: 700000, conv: 150000, spl: 150000 },
+    'EMP-005': { basic: 2600000, da: 650000, conv: 150000, spl: 100000 },
+    // Deliberately under the ESI eligibility limit, so a demo run shows
+    // both PF and ESI and makes the employee/employer split visible.
+    'EMP-006': { basic: 900000, da: 250000, conv: 80000, spl: 0 },
+    'EMP-007': { basic: 800000, da: 200000, conv: 70000, spl: 0 },
+  }
+
+  for (const [employeeCode, pay] of Object.entries(salaryByCode)) {
+    const employee = await db.employee.findFirst({
+      where: { branchId: main_.id, employeeCode },
+      select: { id: true },
+    })
+    if (!employee) continue
+
+    const already = await db.salaryStructure.count({
+      where: { employeeId: employee.id },
+    })
+    if (already > 0) continue
+
+    await db.salaryStructure.create({
+      data: {
+        employeeId: employee.id,
+        effectiveFrom: new Date('2026-04-01'),
+        notes: 'Opening structure',
+        lines: {
+          create: [
+            { componentId: components.get('BASIC')!, amountPaise: pay.basic },
+            { componentId: components.get('DA')!, amountPaise: pay.da },
+            { componentId: components.get('HRA')!, amountPaise: 0 },
+            { componentId: components.get('CONV')!, amountPaise: pay.conv },
+            ...(pay.spl > 0
+              ? [{ componentId: components.get('SPL')!, amountPaise: pay.spl }]
+              : []),
+          ],
+        },
+      },
+    })
+  }
+  console.log('  \u00b7 7 salary structures (statutory deductions left switched OFF)')
+
   console.log('\nSeed complete.')
   console.log(`  Sign in with any of:`)
   for (const [email, , role] of userSpecs) {

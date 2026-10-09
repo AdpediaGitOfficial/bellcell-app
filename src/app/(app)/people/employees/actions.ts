@@ -14,6 +14,8 @@ import { assertCan } from '@/lib/rbac/can'
 import { NoBranchSelectedError, branchScope, writeBranchId } from '@/lib/branch'
 import { recordAudit } from '@/lib/audit'
 import { normalisePhone } from '@/lib/csv'
+import { parseRupeesToPaise } from '@/lib/money'
+import { PayrollError, reviseSalaryStructure } from '@/lib/payroll/service'
 
 const BASE = '/people/employees'
 
@@ -319,4 +321,87 @@ export async function archiveEmployeeAction(formData: FormData): Promise<void> {
 
   revalidatePath(BASE)
   redirect(BASE)
+}
+
+export interface StructureState {
+  error?: string
+  notice?: string
+}
+
+/**
+ * Revise an employee's salary.
+ *
+ * Gated on `people.payroll:update`, not `people.employee:update` — what
+ * someone is paid is a different kind of fact from their qualifications, and
+ * the people who maintain personnel records are not automatically the people
+ * who set salaries.
+ */
+export async function saveSalaryStructureAction(
+  employeeId: string,
+  _prev: StructureState,
+  formData: FormData,
+): Promise<StructureState> {
+  const user = await requireUser()
+  assertCan(user, 'people.payroll', 'update')
+
+  const employee = await db.employee.findFirst({
+    where: { id: employeeId, ...branchScope(user), archivedAt: null },
+    select: { id: true, branchId: true, employeeCode: true },
+  })
+  if (!employee) return { error: 'Employee not found in the current branch.' }
+
+  const effectiveFromRaw = String(formData.get('effectiveFrom') ?? '')
+  const effectiveFrom = new Date(effectiveFromRaw)
+  if (!effectiveFromRaw || Number.isNaN(effectiveFrom.getTime())) {
+    return { error: 'Choose the date the new salary takes effect.' }
+  }
+
+  const components = await db.salaryComponent.findMany({
+    where: { archivedAt: null, isStatutory: false },
+    select: { id: true, calculation: true },
+  })
+
+  const lines: { componentId: string; amountPaise: number }[] = []
+  for (const component of components) {
+    if (component.calculation === 'FIXED') {
+      const raw = String(formData.get(`component.${component.id}`) ?? '').trim()
+      if (raw === '') continue
+      let amountPaise: number
+      try {
+        amountPaise = parseRupeesToPaise(raw)
+      } catch {
+        return { error: `"${raw}" is not an amount this system can read.` }
+      }
+      if (amountPaise < 0) return { error: 'A salary component cannot be negative.' }
+      lines.push({ componentId: component.id, amountPaise })
+    } else if (formData.get(`include.${component.id}`) === 'on') {
+      // A percentage component carries no amount of its own.
+      lines.push({ componentId: component.id, amountPaise: 0 })
+    }
+  }
+
+  try {
+    await reviseSalaryStructure({
+      employeeId: employee.id,
+      effectiveFrom,
+      lines,
+      notes: String(formData.get('notes') ?? '').trim() || null,
+      createdById: user.id,
+    })
+  } catch (error) {
+    if (error instanceof PayrollError) return { error: error.message }
+    throw error
+  }
+
+  await recordAudit({
+    userId: user.id,
+    branchId: employee.branchId,
+    action: 'UPDATE',
+    entityType: 'SalaryStructure',
+    entityId: employee.id,
+    summary: `Set salary for ${employee.employeeCode} effective ${effectiveFrom.toISOString().slice(0, 10)}`,
+  })
+
+  revalidatePath(`${BASE}/${employeeId}`)
+  return { notice: 'Salary structure saved. Earlier structures are kept intact.' }
 }

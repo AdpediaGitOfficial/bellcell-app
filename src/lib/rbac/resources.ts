@@ -45,6 +45,7 @@ export const RESOURCES = {
   'accounts.dayBook': 'Accounts · Day Book',
 
   'people.employee': 'People · Employees',
+  'people.payroll': 'People · Payroll',
 
   reports: 'Reports',
   masters: 'Masters',

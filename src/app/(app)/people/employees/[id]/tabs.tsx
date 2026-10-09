@@ -6,6 +6,7 @@ export const TABS = [
   { key: 'education', label: 'Education' },
   { key: 'experience', label: 'Experience' },
   { key: 'languages', label: 'Language skills' },
+  { key: 'salary', label: 'Salary' },
   { key: 'access', label: 'Login & access' },
 ] as const
 

@@ -28,35 +28,37 @@ datasource db {
 // ===========================================================================
 
 model Branch {
-  id        String   @id @default(cuid())
-  code      String   @unique // e.g. "BC-MAIN"
-  name      String
+  id           String    @id @default(cuid())
+  code         String    @unique // e.g. "BC-MAIN"
+  name         String
   addressLine1 String?
   addressLine2 String?
-  city      String?
-  state     String?
-  pincode   String?
-  phone     String?
-  email     String?
-  isHeadOffice Boolean @default(false)
-  archivedAt DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  city         String?
+  state        String?
+  pincode      String?
+  phone        String?
+  email        String?
+  isHeadOffice Boolean   @default(false)
+  archivedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
-  users              UserBranch[]
-  employees          Employee[]
-  leads              EnquiryLead[]
-  enquiries          Enquiry[]
-  students           Student[]
-  payments           Payment[]
-  dailyTransactions  DailyTransaction[]
-  ledgerEntries      LedgerEntry[]
-  feeStructures      FeeStructure[]
-  receiptSequences   ReceiptSequence[]
+  users               UserBranch[]
+  employees           Employee[]
+  leads               EnquiryLead[]
+  enquiries           Enquiry[]
+  students            Student[]
+  payments            Payment[]
+  dailyTransactions   DailyTransaction[]
+  ledgerEntries       LedgerEntry[]
+  feeStructures       FeeStructure[]
+  receiptSequences    ReceiptSequence[]
   affiliationPayments AffiliationPayment[]
-  examSchedules      ExamSchedule[]
-  classSections      ClassSection[]
-  leadImportBatches  LeadImportBatch[]
+  examSchedules       ExamSchedule[]
+  classSections       ClassSection[]
+  leadImportBatches   LeadImportBatch[]
+  payrollRuns         PayrollRun[]
+  payrollSetting      PayrollSetting?
 
   @@map("branches")
 }
@@ -71,16 +73,16 @@ enum UserRole {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
+  id           String    @id @default(cuid())
+  email        String    @unique
   passwordHash String
   fullName     String
-  role         UserRole @default(STAFF)
-  isActive     Boolean  @default(true)
+  role         UserRole  @default(STAFF)
+  isActive     Boolean   @default(true)
   lastLoginAt  DateTime?
 
   // Failed-login throttling (no equivalent in the vendor scope).
-  failedLoginCount Int      @default(0)
+  failedLoginCount Int       @default(0)
   lockedUntil      DateTime?
 
   mustChangePassword Boolean @default(false)
@@ -91,16 +93,16 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  branches    UserBranch[]
-  sessions    Session[]
-  overrides   UserPermissionOverride[]
-  auditLogs   AuditLog[]
+  branches  UserBranch[]
+  sessions  Session[]
+  overrides UserPermissionOverride[]
+  auditLogs AuditLog[]
 
-  assignedLeads     EnquiryLead[] @relation("LeadAssignee")
-  assignedEnquiries Enquiry[]     @relation("EnquiryAssignee")
-  followUps         EnquiryFollowUp[]
-  collectedPayments Payment[]     @relation("PaymentCollectedBy")
-  approvedConcessions FeeConcession[] @relation("ConcessionApprovedBy")
+  assignedLeads       EnquiryLead[]     @relation("LeadAssignee")
+  assignedEnquiries   Enquiry[]         @relation("EnquiryAssignee")
+  followUps           EnquiryFollowUp[]
+  collectedPayments   Payment[]         @relation("PaymentCollectedBy")
+  approvedConcessions FeeConcession[]   @relation("ConcessionApprovedBy")
 
   @@index([role])
   @@map("users")
@@ -108,9 +110,9 @@ model User {
 
 // Which branches a user may act in. A SUPER_ADMIN implicitly sees all.
 model UserBranch {
-  id       String @id @default(cuid())
-  userId   String
-  branchId String
+  id        String  @id @default(cuid())
+  userId    String
+  branchId  String
   isDefault Boolean @default(false)
 
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -121,15 +123,15 @@ model UserBranch {
 }
 
 model Session {
-  id        String   @id @default(cuid())
-  tokenHash String   @unique
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
   userId    String
   branchId  String? // the branch the user is currently acting in
   userAgent String?
   ipAddress String?
   expiresAt DateTime
   revokedAt DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -142,7 +144,7 @@ model Session {
 // is reviewable in version control. This table records deliberate per-user
 // exceptions to it, which is what institutes actually ask for in practice.
 model UserPermissionOverride {
-  id         String  @id @default(cuid())
+  id         String   @id @default(cuid())
   userId     String
   permission String // e.g. "enquiry.lead:delete"
   granted    Boolean // true = grant, false = explicit deny (deny wins)
@@ -218,15 +220,15 @@ model CourseType {
 }
 
 model Course {
-  id           String  @id @default(cuid())
-  code         String  @unique // e.g. "BCOM"
-  name         String // B.Com, BA, MCA, MBA
-  courseTypeId String
+  id            String    @id @default(cuid())
+  code          String    @unique // e.g. "BCOM"
+  name          String // B.Com, BA, MCA, MBA
+  courseTypeId  String
   // Duration in years; drives Student.courseYear and promotion.
-  durationYears Int    @default(3)
-  archivedAt   DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  durationYears Int       @default(3)
+  archivedAt    DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   courseType CourseType @relation(fields: [courseTypeId], references: [id])
 
@@ -238,8 +240,8 @@ model Course {
   examSchedules       ExamSchedule[]
   leads               EnquiryLead[]
   enquiries           Enquiry[]
-  courseTransfersFrom CourseTransfer[] @relation("TransferFromCourse")
-  courseTransfersTo   CourseTransfer[] @relation("TransferToCourse")
+  courseTransfersFrom CourseTransfer[]    @relation("TransferFromCourse")
+  courseTransfersTo   CourseTransfer[]    @relation("TransferToCourse")
   studyMaterials      StudyMaterial[]
 
   @@index([courseTypeId])
@@ -290,14 +292,14 @@ model AffiliationBody {
 
 // Maps an internal course to the affiliating body's own course code.
 model AffiliationCourse {
-  id                String  @id @default(cuid())
-  affiliationBodyId String
-  courseId          String
+  id                 String    @id @default(cuid())
+  affiliationBodyId  String
+  courseId           String
   externalCourseCode String?
   externalCourseName String?
-  archivedAt        DateTime?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  archivedAt         DateTime?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   affiliationBody AffiliationBody @relation(fields: [affiliationBodyId], references: [id])
   course          Course          @relation(fields: [courseId], references: [id])
@@ -307,19 +309,19 @@ model AffiliationCourse {
 }
 
 model Subject {
-  id           String  @id @default(cuid())
+  id           String    @id @default(cuid())
   code         String
   name         String
   courseTypeId String?
   courseId     String?
   courseYear   Int? // 1..durationYears
   // Credits/max marks feed the exam-result screens.
-  maxMarks     Int     @default(100)
-  passMarks    Int     @default(35)
-  isElective   Boolean @default(false)
+  maxMarks     Int       @default(100)
+  passMarks    Int       @default(35)
+  isElective   Boolean   @default(false)
   archivedAt   DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   courseType CourseType? @relation(fields: [courseTypeId], references: [id])
   course     Course?     @relation(fields: [courseId], references: [id])
@@ -337,19 +339,19 @@ model Subject {
 // as an issuable item so the "Study materials" tracking screen and the
 // "Study material issue summary" report have something to hang off.
 model StudyMaterial {
-  id         String    @id @default(cuid())
-  code       String    @unique
-  title      String
-  kind       StudyMaterialKind @default(BOOK)
-  courseId   String?
-  subjectId  String?
-  courseYear Int?
+  id          String            @id @default(cuid())
+  code        String            @unique
+  title       String
+  kind        StudyMaterialKind @default(BOOK)
+  courseId    String?
+  subjectId   String?
+  courseYear  Int?
   // Stock tracking, so issuing cannot go negative.
-  stockTotal  Int @default(0)
-  stockIssued Int @default(0)
-  archivedAt DateTime?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  stockTotal  Int               @default(0)
+  stockIssued Int               @default(0)
+  archivedAt  DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
 
   course  Course?  @relation(fields: [courseId], references: [id])
   subject Subject? @relation(fields: [subjectId], references: [id])
@@ -393,19 +395,19 @@ enum FeeCategory {
 }
 
 model FeeType {
-  id       String      @id @default(cuid())
-  code     String      @unique
-  name     String // Application Fee, Exam Fee, Course/Tuition Fee
-  category FeeCategory @default(OTHER)
+  id                     String      @id @default(cuid())
+  code                   String      @unique
+  name                   String // Application Fee, Exam Fee, Course/Tuition Fee
+  category               FeeCategory @default(OTHER)
   // Whether this fee is onward-payable to the affiliating body, which is what
   // the "Affiliation & Tie-Up Payment" screen reconciles.
-  isPayableToAffiliation Boolean @default(false)
+  isPayableToAffiliation Boolean     @default(false)
   // Default account head so collections post to the ledger automatically.
-  accountHeadId String?
-  isRefundable  Boolean @default(true)
-  archivedAt    DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  accountHeadId          String?
+  isRefundable           Boolean     @default(true)
+  archivedAt             DateTime?
+  createdAt              DateTime    @default(now())
+  updatedAt              DateTime    @updatedAt
 
   accountHead AccountHead? @relation(fields: [accountHeadId], references: [id])
 
@@ -443,15 +445,15 @@ model Department {
 }
 
 model CertificateType {
-  id   String @id @default(cuid())
-  code String @unique
-  name String // SSLC, Plus Two, Degree Certificate, TC, Migration
+  id                  String    @id @default(cuid())
+  code                String    @unique
+  name                String // SSLC, Plus Two, Degree Certificate, TC, Migration
   // Originals of this type are collected from the student and must be
   // tracked back to them - drives the Return Certificate screen.
-  isOriginalCollected Boolean @default(true)
-  archivedAt DateTime?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  isOriginalCollected Boolean   @default(true)
+  archivedAt          DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   studentEducations  StudentEducation[]
   certificateCustody CertificateCustody[]
@@ -478,17 +480,17 @@ model ExamCentre {
 // Covers vendor masters #14 "Second Language" and #16 "Medium" - the same
 // list of languages used in two places, flagged by usage.
 model Language {
-  id              String    @id @default(cuid())
-  name            String    @unique // Tamil, English, Malayalam, Hindi
-  usableAsMedium  Boolean   @default(true)
-  usableAsSecond  Boolean   @default(true)
-  archivedAt      DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id             String    @id @default(cuid())
+  name           String    @unique // Tamil, English, Malayalam, Hindi
+  usableAsMedium Boolean   @default(true)
+  usableAsSecond Boolean   @default(true)
+  archivedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  studentsAsMedium   Student[] @relation("StudentMedium")
-  studentsAsSecond   Student[] @relation("StudentSecondLanguage")
-  employeeSkills     EmployeeLanguageSkill[]
+  studentsAsMedium Student[]               @relation("StudentMedium")
+  studentsAsSecond Student[]               @relation("StudentSecondLanguage")
+  employeeSkills   EmployeeLanguageSkill[]
 
   @@map("languages")
 }
@@ -511,16 +513,16 @@ model EnquirySource {
 }
 
 model EnquiryCallStatus {
-  id         String    @id @default(cuid())
-  name       String    @unique // Call Later, Attended, Not Interested
+  id               String    @id @default(cuid())
+  name             String    @unique // Call Later, Attended, Not Interested
   // Drives the Call Schedule screens: does this outcome require a next call?
-  requiresFollowUp Boolean @default(true)
-  isTerminal       Boolean @default(false) // Not Interested / Converted
+  requiresFollowUp Boolean   @default(true)
+  isTerminal       Boolean   @default(false) // Not Interested / Converted
   colour           String? // badge tint, hex
-  sortOrder        Int     @default(0)
-  archivedAt DateTime?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  sortOrder        Int       @default(0)
+  archivedAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   leads     EnquiryLead[]
   enquiries Enquiry[]
@@ -550,26 +552,26 @@ model LeadImportBatch {
 // Raw lead, typically bulk-loaded from social media / listing sites.
 // Deliberately permissive: only a contact number is required.
 model EnquiryLead {
-  id          String  @id @default(cuid())
-  branchId    String
-  name        String
-  phone       String
-  altPhone    String?
-  email       String?
-  city        String?
-  courseId    String?
-  sourceId    String?
-  callStatusId String?
-  assignedToId String?
+  id            String  @id @default(cuid())
+  branchId      String
+  name          String
+  phone         String
+  altPhone      String?
+  email         String?
+  city          String?
+  courseId      String?
+  sourceId      String?
+  callStatusId  String?
+  assignedToId  String?
   importBatchId String?
 
-  notes       String?
-  nextCallAt  DateTime?
+  notes        String?
+  nextCallAt   DateTime?
   lastCalledAt DateTime?
-  callCount   Int      @default(0)
+  callCount    Int       @default(0)
 
   // Set when the lead is promoted to a qualified Enquiry.
-  convertedEnquiryId String?  @unique
+  convertedEnquiryId String?   @unique
   convertedAt        DateTime?
 
   isDuplicate Boolean   @default(false)
@@ -577,13 +579,13 @@ model EnquiryLead {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  branch      Branch             @relation(fields: [branchId], references: [id])
-  course      Course?            @relation(fields: [courseId], references: [id])
-  source      EnquirySource?     @relation(fields: [sourceId], references: [id])
-  callStatus  EnquiryCallStatus? @relation(fields: [callStatusId], references: [id])
-  assignedTo  User?              @relation("LeadAssignee", fields: [assignedToId], references: [id])
-  importBatch LeadImportBatch?   @relation(fields: [importBatchId], references: [id])
-  convertedEnquiry Enquiry?      @relation("LeadToEnquiry", fields: [convertedEnquiryId], references: [id])
+  branch           Branch             @relation(fields: [branchId], references: [id])
+  course           Course?            @relation(fields: [courseId], references: [id])
+  source           EnquirySource?     @relation(fields: [sourceId], references: [id])
+  callStatus       EnquiryCallStatus? @relation(fields: [callStatusId], references: [id])
+  assignedTo       User?              @relation("LeadAssignee", fields: [assignedToId], references: [id])
+  importBatch      LeadImportBatch?   @relation(fields: [importBatchId], references: [id])
+  convertedEnquiry Enquiry?           @relation("LeadToEnquiry", fields: [convertedEnquiryId], references: [id])
 
   followUps EnquiryFollowUp[]
 
@@ -605,7 +607,7 @@ enum EnquiryStage {
 
 // A qualified enquiry being followed all the way to admission.
 model Enquiry {
-  id           String       @id @default(cuid())
+  id           String  @id @default(cuid())
   branchId     String
   enquiryNo    String
   name         String
@@ -631,7 +633,7 @@ model Enquiry {
   lostReason String?
 
   // Set on conversion to an admission.
-  studentId  String?   @unique
+  studentId   String?   @unique
   convertedAt DateTime?
 
   archivedAt DateTime?
@@ -707,29 +709,29 @@ enum StudentStatus {
 }
 
 model Student {
-  id        String @id @default(cuid())
-  branchId  String
+  id       String @id @default(cuid())
+  branchId String
 
   // Three distinct identifiers the scope calls for. Application number is
   // ours; the other two arrive later from the university and so are nullable.
-  applicationNo         String
-  admissionNo           String?
-  enrolmentNumber       String?
+  applicationNo          String
+  admissionNo            String?
+  enrolmentNumber        String?
   examRegistrationNumber String?
 
   // --- Personal details ---
-  firstName   String
-  lastName    String?
-  dateOfBirth DateTime?
-  gender      Gender?
-  photoPath   String?
-  phone       String?
-  altPhone    String?
-  email       String?
+  firstName    String
+  lastName     String?
+  dateOfBirth  DateTime?
+  gender       Gender?
+  photoPath    String?
+  phone        String?
+  altPhone     String?
+  email        String?
   aadhaarLast4 String? // never store the full Aadhaar - see ADR-006
-  religionId  String?
-  category    String? // General/OBC/SC/ST - required by most universities
-  bloodGroup  String?
+  religionId   String?
+  category     String? // General/OBC/SC/ST - required by most universities
+  bloodGroup   String?
 
   addressLine1 String?
   addressLine2 String?
@@ -751,8 +753,8 @@ model Student {
   statusReason  String?
 
   archivedAt DateTime?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   branch          Branch           @relation(fields: [branchId], references: [id])
   course          Course           @relation(fields: [courseId], references: [id])
@@ -763,25 +765,25 @@ model Student {
   medium          Language?        @relation("StudentMedium", fields: [mediumId], references: [id])
   secondLanguage  Language?        @relation("StudentSecondLanguage", fields: [secondLanguageId], references: [id])
 
-  enquiry           Enquiry?
-  guardians         StudentGuardian[]
-  educations        StudentEducation[]
-  documents         StudentDocument[]
-  feeAssignments    StudentFeeAssignment[]
-  installments      FeeInstallment[]
-  concessions       FeeConcession[]
-  payments          Payment[]
-  refunds           FeeRefund[]
-  rollNumbers       RollNumber[]
-  idCards           StudentIdCard[]
-  certificateCustody CertificateCustody[]
-  examResults       ExamResult[]
-  transferCertificates TransferCertificate[]
+  enquiry                Enquiry?
+  guardians              StudentGuardian[]
+  educations             StudentEducation[]
+  documents              StudentDocument[]
+  feeAssignments         StudentFeeAssignment[]
+  installments           FeeInstallment[]
+  concessions            FeeConcession[]
+  payments               Payment[]
+  refunds                FeeRefund[]
+  rollNumbers            RollNumber[]
+  idCards                StudentIdCard[]
+  certificateCustody     CertificateCustody[]
+  examResults            ExamResult[]
+  transferCertificates   TransferCertificate[]
   completionCertificates CourseCompletionCertificate[]
-  courseTransfers   CourseTransfer[]
-  promotions        StudentPromotion[]
-  materialIssues    StudyMaterialIssue[]
-  notifications     NotificationLog[]
+  courseTransfers        CourseTransfer[]
+  promotions             StudentPromotion[]
+  materialIssues         StudyMaterialIssue[]
+  notifications          NotificationLog[]
 
   @@unique([branchId, applicationNo])
   @@unique([branchId, admissionNo])
@@ -795,17 +797,17 @@ model Student {
 // than fixed father/mother columns, because single-guardian and
 // guardian-other-than-parent cases are common.
 model StudentGuardian {
-  id           String  @id @default(cuid())
-  studentId    String
-  relation     String // Father, Mother, Guardian
-  name         String
-  occupation   String?
-  phone        String?
-  email        String?
+  id                String   @id @default(cuid())
+  studentId         String
+  relation          String // Father, Mother, Guardian
+  name              String
+  occupation        String?
+  phone             String?
+  email             String?
   annualIncomePaise Int?
-  isPrimaryContact Boolean @default(false)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  isPrimaryContact  Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
@@ -816,7 +818,7 @@ model StudentGuardian {
 // Prior qualifications. Where an ORIGINAL certificate was collected, a
 // CertificateCustody row is opened against this record.
 model StudentEducation {
-  id                String @id @default(cuid())
+  id                String   @id @default(cuid())
   studentId         String
   certificateTypeId String?
   qualification     String // SSLC, Plus Two, Degree
@@ -826,14 +828,14 @@ model StudentEducation {
   registerNumber    String?
   marksPercentage   Decimal? @db.Decimal(5, 2)
 
-  originalCollected   Boolean @default(false)
+  originalCollected   Boolean   @default(false)
   originalCollectedAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  student         Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  certificateType CertificateType? @relation(fields: [certificateTypeId], references: [id])
+  student         Student              @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  certificateType CertificateType?     @relation(fields: [certificateTypeId], references: [id])
   custody         CertificateCustody[]
 
   @@index([studentId])
@@ -841,14 +843,14 @@ model StudentEducation {
 }
 
 model StudentDocument {
-  id        String   @id @default(cuid())
-  studentId String
-  label     String
-  filePath  String
-  mimeType  String?
-  sizeBytes Int?
+  id           String   @id @default(cuid())
+  studentId    String
+  label        String
+  filePath     String
+  mimeType     String?
+  sizeBytes    Int?
   uploadedById String?
-  createdAt DateTime @default(now())
+  createdAt    DateTime @default(now())
 
   student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
@@ -878,14 +880,14 @@ model CertificateCustody {
   certificateTypeId  String
   affiliationBodyId  String?
 
-  status        CustodyStatus @default(WITH_INSTITUTE)
-  collectedAt   DateTime?
-  sentAt        DateTime?
-  returnedAt    DateTime?
-  handedBackAt  DateTime?
+  status              CustodyStatus @default(WITH_INSTITUTE)
+  collectedAt         DateTime?
+  sentAt              DateTime?
+  returnedAt          DateTime?
+  handedBackAt        DateTime?
   // Signed acknowledgement from the student on hand-back.
   acknowledgementPath String?
-  remarks       String?
+  remarks             String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -903,14 +905,14 @@ model CertificateCustody {
 }
 
 model CertificateCustodyEvent {
-  id        String        @id @default(cuid())
-  custodyId String
-  fromStatus CustodyStatus?
-  toStatus  CustodyStatus
-  occurredAt DateTime     @default(now())
+  id          String         @id @default(cuid())
+  custodyId   String
+  fromStatus  CustodyStatus?
+  toStatus    CustodyStatus
+  occurredAt  DateTime       @default(now())
   handledById String?
-  remarks   String?
-  createdAt DateTime      @default(now())
+  remarks     String?
+  createdAt   DateTime       @default(now())
 
   custody CertificateCustody @relation(fields: [custodyId], references: [id], onDelete: Cascade)
 
@@ -923,7 +925,7 @@ model CertificateCustodyEvent {
 // ---------------------------------------------------------------------------
 
 model ClassSection {
-  id         String @id @default(cuid())
+  id         String    @id @default(cuid())
   branchId   String
   courseId   String
   batchId    String
@@ -931,8 +933,8 @@ model ClassSection {
   name       String // "A", "B"
   capacity   Int?
   archivedAt DateTime?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   branch Branch @relation(fields: [branchId], references: [id])
   course Course @relation(fields: [courseId], references: [id])
@@ -945,15 +947,15 @@ model ClassSection {
 }
 
 model RollNumber {
-  id        String @id @default(cuid())
-  studentId String
-  sectionId String
+  id         String    @id @default(cuid())
+  studentId  String
+  sectionId  String
   courseYear Int
-  rollNo    Int
+  rollNo     Int
   // Set when a student is dropped and the number is freed for reallocation.
   releasedAt DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   student Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
   section ClassSection @relation(fields: [sectionId], references: [id])
@@ -976,18 +978,18 @@ enum IdCardStatus {
 }
 
 model StudentIdCard {
-  id         String       @id @default(cuid())
-  studentId  String
-  cardNumber String?
-  status     IdCardStatus @default(REQUESTED)
-  requestedAt DateTime    @default(now())
+  id          String       @id @default(cuid())
+  studentId   String
+  cardNumber  String?
+  status      IdCardStatus @default(REQUESTED)
+  requestedAt DateTime     @default(now())
   receivedAt  DateTime?
   notifiedAt  DateTime?
   collectedAt DateTime?
   validUpto   DateTime?
   remarks     String?
-  createdAt  DateTime     @default(now())
-  updatedAt  DateTime     @updatedAt
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 
   student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
@@ -997,19 +999,19 @@ model StudentIdCard {
 }
 
 model TransferCertificate {
-  id          String   @id @default(cuid())
-  studentId   String
-  tcNumber    String   @unique
-  issuedAt    DateTime @default(now())
-  reason      String?
+  id            String    @id @default(cuid())
+  studentId     String
+  tcNumber      String    @unique
+  issuedAt      DateTime  @default(now())
+  reason        String?
   conductRemark String?
-  issuedById  String?
+  issuedById    String?
   // Tracks the "given to student" half of the requirement.
-  handedOverAt DateTime?
-  receivedBy   String?
-  documentPath String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  handedOverAt  DateTime?
+  receivedBy    String?
+  documentPath  String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
@@ -1018,16 +1020,16 @@ model TransferCertificate {
 }
 
 model CourseCompletionCertificate {
-  id             String   @id @default(cuid())
+  id             String    @id @default(cuid())
   studentId      String
-  certificateNo  String   @unique
+  certificateNo  String    @unique
   completionDate DateTime
   grade          String?
   issuedAt       DateTime?
   handedOverAt   DateTime?
   documentPath   String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
@@ -1036,16 +1038,16 @@ model CourseCompletionCertificate {
 }
 
 model CourseTransfer {
-  id           String   @id @default(cuid())
-  studentId    String
-  fromCourseId String
-  toCourseId   String
-  transferDate DateTime @default(now())
-  reason       String?
+  id                 String   @id @default(cuid())
+  studentId          String
+  fromCourseId       String
+  toCourseId         String
+  transferDate       DateTime @default(now())
+  reason             String?
   // Fee implications are explicit rather than implied.
-  feeAdjustmentPaise Int  @default(0)
-  approvedById String?
-  createdAt    DateTime @default(now())
+  feeAdjustmentPaise Int      @default(0)
+  approvedById       String?
+  createdAt          DateTime @default(now())
 
   student    Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
   fromCourse Course  @relation("TransferFromCourse", fields: [fromCourseId], references: [id])
@@ -1056,15 +1058,15 @@ model CourseTransfer {
 }
 
 model StudentPromotion {
-  id         String   @id @default(cuid())
-  studentId  String
-  fromYear   Int
-  toYear     Int
-  batchId    String?
-  promotedAt DateTime @default(now())
+  id           String   @id @default(cuid())
+  studentId    String
+  fromYear     Int
+  toYear       Int
+  batchId      String?
+  promotedAt   DateTime @default(now())
   promotedById String?
-  remarks    String?
-  createdAt  DateTime @default(now())
+  remarks      String?
+  createdAt    DateTime @default(now())
 
   student Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
 
@@ -1104,7 +1106,7 @@ enum ExamTerm {
 }
 
 model ExamSchedule {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   branchId     String
   name         String
   courseId     String
@@ -1114,10 +1116,10 @@ model ExamSchedule {
   examCentreId String?
   startDate    DateTime
   endDate      DateTime
-  isPublished  Boolean  @default(false)
+  isPublished  Boolean   @default(false)
   archivedAt   DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   branch     Branch      @relation(fields: [branchId], references: [id])
   course     Course      @relation(fields: [courseId], references: [id])
@@ -1156,18 +1158,18 @@ enum ResultStatus {
 }
 
 model ExamResult {
-  id         String       @id @default(cuid())
-  scheduleId String
-  studentId  String
-  totalMarks Int          @default(0)
-  maxMarks   Int          @default(0)
-  percentage Decimal?     @db.Decimal(5, 2)
-  grade      String?
-  status     ResultStatus @default(PASS)
+  id          String       @id @default(cuid())
+  scheduleId  String
+  studentId   String
+  totalMarks  Int          @default(0)
+  maxMarks    Int          @default(0)
+  percentage  Decimal?     @db.Decimal(5, 2)
+  grade       String?
+  status      ResultStatus @default(PASS)
   publishedAt DateTime?
-  remarks    String?
-  createdAt  DateTime     @default(now())
-  updatedAt  DateTime     @updatedAt
+  remarks     String?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 
   schedule ExamSchedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
   student  Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
@@ -1180,13 +1182,13 @@ model ExamResult {
 }
 
 model ExamResultSubject {
-  id        String  @id @default(cuid())
+  id        String   @id @default(cuid())
   resultId  String
   subjectId String
   marks     Int?
-  maxMarks  Int     @default(100)
+  maxMarks  Int      @default(100)
   grade     String?
-  isAbsent  Boolean @default(false)
+  isAbsent  Boolean  @default(false)
   createdAt DateTime @default(now())
 
   result  ExamResult @relation(fields: [resultId], references: [id], onDelete: Cascade)
@@ -1220,7 +1222,7 @@ model FeeStructure {
   courseYear  Int     @default(1)
 
   // Late-fee policy, absent from the vendor scope entirely.
-  graceDays        Int @default(0)
+  graceDays          Int @default(0)
   lateFeePerDayPaise Int @default(0)
   lateFeeMaxPaise    Int @default(0)
 
@@ -1242,19 +1244,19 @@ model FeeStructure {
 }
 
 model FeeStructureItem {
-  id          String @id @default(cuid())
-  structureId String
-  feeTypeId   String
-  amountPaise Int
+  id            String    @id @default(cuid())
+  structureId   String
+  feeTypeId     String
+  amountPaise   Int
   // Instalment 1..n; items sharing a number fall due together.
-  installmentNo Int    @default(1)
+  installmentNo Int       @default(1)
   // Days after admission date when this instalment falls due. Null = use
   // dueDate below (a fixed calendar date, e.g. a university deadline).
-  dueAfterDays Int?
-  dueDate      DateTime?
-  isMandatory  Boolean @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  dueAfterDays  Int?
+  dueDate       DateTime?
+  isMandatory   Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   structure FeeStructure @relation(fields: [structureId], references: [id], onDelete: Cascade)
   feeType   FeeType      @relation(fields: [feeTypeId], references: [id])
@@ -1264,16 +1266,16 @@ model FeeStructureItem {
 }
 
 model StudentFeeAssignment {
-  id          String   @id @default(cuid())
-  studentId   String
-  structureId String
-  assignedAt  DateTime @default(now())
+  id           String   @id @default(cuid())
+  studentId    String
+  structureId  String
+  assignedAt   DateTime @default(now())
   assignedById String?
   // Snapshot of the structure total at assignment time, so later edits to the
   // master do not silently rewrite history.
-  totalPaise  Int      @default(0)
-  remarks     String?
-  createdAt   DateTime @default(now())
+  totalPaise   Int      @default(0)
+  remarks      String?
+  createdAt    DateTime @default(now())
 
   student   Student      @relation(fields: [studentId], references: [id], onDelete: Cascade)
   structure FeeStructure @relation(fields: [structureId], references: [id])
@@ -1292,19 +1294,19 @@ enum InstallmentStatus {
 
 // One concrete amount owed by one student, due on one date.
 model FeeInstallment {
-  id         String @id @default(cuid())
-  studentId  String
-  feeTypeId  String
-  label      String
-  installmentNo Int   @default(1)
+  id            String @id @default(cuid())
+  studentId     String
+  feeTypeId     String
+  label         String
+  installmentNo Int    @default(1)
 
-  dueDate    DateTime
-  duePaise   Int // never mutated by payments
-  concessionPaise Int @default(0)
-  lateFeePaise    Int @default(0)
-  paidPaise       Int @default(0) // maintained by PaymentAllocation writes
+  dueDate         DateTime
+  duePaise        Int // never mutated by payments
+  concessionPaise Int      @default(0)
+  lateFeePaise    Int      @default(0)
+  paidPaise       Int      @default(0) // maintained by PaymentAllocation writes
 
-  status     InstallmentStatus @default(PENDING)
+  status       InstallmentStatus @default(PENDING)
   waivedReason String?
 
   createdAt DateTime @default(now())
@@ -1375,9 +1377,9 @@ model Payment {
   studentId String
 
   receiptNo   String
-  receiptDate DateTime @default(now())
+  receiptDate DateTime      @default(now())
   amountPaise Int
-  mode        PaymentMode @default(CASH)
+  mode        PaymentMode   @default(CASH)
   status      PaymentStatus @default(COMPLETED)
 
   referenceNo   String? // UPI ref / cheque no / DD no
@@ -1409,7 +1411,7 @@ model Payment {
 }
 
 model PaymentAllocation {
-  id            String @id @default(cuid())
+  id            String   @id @default(cuid())
   paymentId     String
   installmentId String
   amountPaise   Int
@@ -1424,17 +1426,17 @@ model PaymentAllocation {
 }
 
 model FeeRefund {
-  id          String   @id @default(cuid())
-  studentId   String
-  paymentId   String?
-  amountPaise Int
-  reason      String
-  refundedAt  DateTime @default(now())
-  mode        PaymentMode @default(CASH)
-  referenceNo String?
+  id           String      @id @default(cuid())
+  studentId    String
+  paymentId    String?
+  amountPaise  Int
+  reason       String
+  refundedAt   DateTime    @default(now())
+  mode         PaymentMode @default(CASH)
+  referenceNo  String?
   approvedById String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
 
   student Student  @relation(fields: [studentId], references: [id])
   payment Payment? @relation(fields: [paymentId], references: [id])
@@ -1452,13 +1454,13 @@ model FeeRefund {
 // and accounts vouchers (VCH) must each be gapless on their own, so they
 // cannot share one counter.
 model ReceiptSequence {
-  id          String @id @default(cuid())
-  branchId    String
+  id            String   @id @default(cuid())
+  branchId      String
   financialYear String // "2026-27"
-  series      String  @default("RECEIPT")
-  prefix      String  @default("RC")
-  lastNumber  Int     @default(0)
-  updatedAt   DateTime @updatedAt
+  series        String   @default("RECEIPT")
+  prefix        String   @default("RC")
+  lastNumber    Int      @default(0)
+  updatedAt     DateTime @updatedAt
 
   branch Branch @relation(fields: [branchId], references: [id])
 
@@ -1492,17 +1494,17 @@ model AccountHead {
 }
 
 model BankAccount {
-  id            String  @id @default(cuid())
-  accountName   String
-  bankName      String
-  branchName    String?
-  accountNumber String
-  ifsc          String?
-  openingBalancePaise Int @default(0)
-  isActive      Boolean @default(true)
-  archivedAt    DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id                  String    @id @default(cuid())
+  accountName         String
+  bankName            String
+  branchName          String?
+  accountNumber       String
+  ifsc                String?
+  openingBalancePaise Int       @default(0)
+  isActive            Boolean   @default(true)
+  archivedAt          DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
 
   payments            Payment[]
   dailyTransactions   DailyTransaction[]
@@ -1514,20 +1516,20 @@ model BankAccount {
 }
 
 model DailyTransaction {
-  id            String          @id @default(cuid())
-  branchId      String
-  voucherNo     String
-  transactionDate DateTime      @default(now())
-  kind          AccountHeadKind
-  accountHeadId String
-  amountPaise   Int
-  mode          PaymentMode     @default(CASH)
-  bankAccountId String?
-  referenceNo   String?
-  narration     String?
-  enteredById   String?
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  id              String          @id @default(cuid())
+  branchId        String
+  voucherNo       String
+  transactionDate DateTime        @default(now())
+  kind            AccountHeadKind
+  accountHeadId   String
+  amountPaise     Int
+  mode            PaymentMode     @default(CASH)
+  bankAccountId   String?
+  referenceNo     String?
+  narration       String?
+  enteredById     String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 
   branch      Branch       @relation(fields: [branchId], references: [id])
   accountHead AccountHead  @relation(fields: [accountHeadId], references: [id])
@@ -1543,12 +1545,12 @@ model DailyTransaction {
 // Amounts owed onward to the affiliating university, reconciled against what
 // was collected from students under the same fee type.
 model AffiliationPayment {
-  id                String   @id @default(cuid())
+  id                String      @id @default(cuid())
   branchId          String
   affiliationBodyId String
   feeTypeId         String?
   referenceNo       String?
-  paidOn            DateTime @default(now())
+  paidOn            DateTime    @default(now())
   amountPaise       Int
   mode              PaymentMode @default(BANK_TRANSFER)
   bankAccountId     String?
@@ -1556,8 +1558,8 @@ model AffiliationPayment {
   // reconciliation is derived from Payments of the same fee type.
   studentCount      Int?
   narration         String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
 
   branch          Branch          @relation(fields: [branchId], references: [id])
   affiliationBody AffiliationBody @relation(fields: [affiliationBodyId], references: [id])
@@ -1652,23 +1654,25 @@ model Employee {
   state        String?
   pincode      String?
 
-  departmentId String?
-  designation  String?
+  departmentId  String?
+  designation   String?
   dateOfJoining DateTime?
   dateOfLeaving DateTime?
-  status       EmploymentStatus @default(ACTIVE)
+  status        EmploymentStatus @default(ACTIVE)
 
   archivedAt DateTime?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   branch     Branch      @relation(fields: [branchId], references: [id])
   department Department? @relation(fields: [departmentId], references: [id])
 
-  user        User?
-  educations  EmployeeEducation[]
-  experiences EmployeeExperience[]
-  languages   EmployeeLanguageSkill[]
+  user             User?
+  educations       EmployeeEducation[]
+  experiences      EmployeeExperience[]
+  languages        EmployeeLanguageSkill[]
+  salaryStructures SalaryStructure[]
+  payslips         Payslip[]
 
   @@unique([branchId, employeeCode])
   @@index([branchId, status])
@@ -1676,15 +1680,15 @@ model Employee {
 }
 
 model EmployeeEducation {
-  id            String @id @default(cuid())
-  employeeId    String
-  qualification String
-  institution   String?
+  id                String   @id @default(cuid())
+  employeeId        String
+  qualification     String
+  institution       String?
   boardOrUniversity String?
-  yearOfPassing Int?
-  marksPercentage Decimal? @db.Decimal(5, 2)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  yearOfPassing     Int?
+  marksPercentage   Decimal? @db.Decimal(5, 2)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
@@ -1693,15 +1697,15 @@ model EmployeeEducation {
 }
 
 model EmployeeExperience {
-  id           String   @id @default(cuid())
+  id           String    @id @default(cuid())
   employeeId   String
   organisation String
   designation  String?
   fromDate     DateTime?
   toDate       DateTime?
   remarks      String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
@@ -1717,14 +1721,14 @@ enum LanguageProficiency {
 }
 
 model EmployeeLanguageSkill {
-  id         String @id @default(cuid())
-  employeeId String
-  languageId String
-  canRead    Boolean @default(true)
-  canWrite   Boolean @default(true)
-  canSpeak   Boolean @default(true)
+  id          String              @id @default(cuid())
+  employeeId  String
+  languageId  String
+  canRead     Boolean             @default(true)
+  canWrite    Boolean             @default(true)
+  canSpeak    Boolean             @default(true)
   proficiency LanguageProficiency @default(INTERMEDIATE)
-  createdAt  DateTime @default(now())
+  createdAt   DateTime            @default(now())
 
   employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   language Language @relation(fields: [languageId], references: [id])
@@ -1753,24 +1757,268 @@ enum NotificationStatus {
 // of ID cards", fee reminders, result publication) is logged, because these
 // are billable and disputed after the fact.
 model NotificationLog {
-  id        String              @id @default(cuid())
-  channel   NotificationChannel
-  status    NotificationStatus  @default(QUEUED)
-  template  String
-  recipient String // email address or phone
-  subject   String?
-  body      String?
-  studentId String?
+  id          String              @id @default(cuid())
+  channel     NotificationChannel
+  status      NotificationStatus  @default(QUEUED)
+  template    String
+  recipient   String // email address or phone
+  subject     String?
+  body        String?
+  studentId   String?
   relatedType String?
   relatedId   String?
   providerRef String?
   errorText   String?
-  sentAt    DateTime?
-  createdAt DateTime            @default(now())
+  sentAt      DateTime?
+  createdAt   DateTime            @default(now())
 
   student Student? @relation(fields: [studentId], references: [id], onDelete: SetNull)
 
   @@index([studentId])
   @@index([status, createdAt])
   @@map("notification_logs")
+}
+
+// ---------------------------------------------------------------- payroll
+//
+// The vendor quotation mentions "Salary Details" in its Employee intro and
+// then specifies no screens, fields or rules. Everything here is therefore a
+// design, not a transcription — and the statutory parts are the dangerous
+// kind of unspecified, because getting them wrong means money owed to the
+// government. So: nothing statutory is deducted until someone explicitly
+// turns it on and enters the rate (see PayrollSetting), and every rule lives
+// in src/lib/payroll/core.ts where it is unit-tested and changeable in one
+// place. See docs/open-questions.md §4.
+
+enum SalaryComponentKind {
+  EARNING
+  DEDUCTION
+  /// Paid by the institute on top of gross; never reduces take-home.
+  EMPLOYER_CONTRIBUTION
+}
+
+enum SalaryCalculation {
+  /// A rupee amount set per employee.
+  FIXED
+  /// A percentage of the sum of components flagged partOfBasic.
+  PERCENT_OF_BASIC
+  /// A percentage of total earnings.
+  PERCENT_OF_GROSS
+}
+
+enum PayrollRunStatus {
+  DRAFT
+  APPROVED
+  PAID
+  CANCELLED
+}
+
+model SalaryComponent {
+  id          String              @id @default(cuid())
+  code        String              @unique // BASIC, DA, HRA, PF_EE, ESI_EE
+  name        String
+  kind        SalaryComponentKind
+  calculation SalaryCalculation   @default(FIXED)
+  /// For PERCENT_* components. Null for FIXED.
+  percentage  Decimal?            @db.Decimal(6, 3)
+
+  /// Counts towards the PF/ESI wage base. Basic and DA do; HRA does not.
+  partOfBasic Boolean @default(false)
+  /// Pro-rated by paid days. A fixed reimbursement usually is not.
+  proRated    Boolean @default(true)
+  /// Maintained by the system (PF, ESI, PT); not editable per employee.
+  isStatutory Boolean @default(false)
+
+  sortOrder  Int       @default(0)
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  structureLines SalaryStructureLine[]
+  payslipLines   PayslipLine[]
+
+  @@index([kind, sortOrder])
+  @@map("salary_components")
+}
+
+/// A dated snapshot of one employee's pay. A revision creates a NEW row and
+/// closes the previous one, so a payslip printed last year still reconciles.
+model SalaryStructure {
+  id            String    @id @default(cuid())
+  employeeId    String
+  effectiveFrom DateTime
+  effectiveTo   DateTime?
+  notes         String?
+  createdById   String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  employee Employee              @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  lines    SalaryStructureLine[]
+
+  @@index([employeeId, effectiveFrom])
+  @@map("salary_structures")
+}
+
+model SalaryStructureLine {
+  id          String @id @default(cuid())
+  structureId String
+  componentId String
+  amountPaise Int    @default(0)
+
+  structure SalaryStructure @relation(fields: [structureId], references: [id], onDelete: Cascade)
+  component SalaryComponent @relation(fields: [componentId], references: [id])
+
+  @@unique([structureId, componentId])
+  @@map("salary_structure_lines")
+}
+
+/// Statutory configuration, per branch. Every toggle starts OFF: an institute
+/// that is not PF-registered must not have PF silently deducted, and one that
+/// is must enter its own rates rather than inherit a number we guessed.
+model PayrollSetting {
+  id       String @id @default(cuid())
+  branchId String @unique
+
+  pfEnabled          Boolean @default(false)
+  pfEmployeeRate     Decimal @default(12) @db.Decimal(6, 3)
+  pfEmployerRate     Decimal @default(12) @db.Decimal(6, 3)
+  /// Wage ceiling for the PF base, in paise. Above it, PF is computed on the
+  /// ceiling rather than actual wages.
+  pfWageCeilingPaise Int     @default(1500000)
+  pfNumber           String?
+
+  esiEnabled          Boolean @default(false)
+  esiEmployeeRate     Decimal @default(0.75) @db.Decimal(6, 3)
+  esiEmployerRate     Decimal @default(3.25) @db.Decimal(6, 3)
+  /// Gross ABOVE this is not covered by ESI at all (unlike PF, it is an
+  /// eligibility test, not a cap on the base).
+  esiEligibilityPaise Int     @default(2100000)
+  esiNumber           String?
+
+  /// Professional tax is a state levy with its own slabs; in Kerala it is
+  /// half-yearly. Slabs live in PayrollTaxSlab.
+  ptEnabled Boolean @default(false)
+
+  /// Standard working days when a month's days are not used. Null = use the
+  /// actual number of days in the month.
+  standardWorkingDays Int?
+
+  /// The expense head salary is posted to when a run is paid.
+  salaryAccountHeadId String?
+
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  branch Branch           @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  slabs  PayrollTaxSlab[]
+
+  @@map("payroll_settings")
+}
+
+/// A professional-tax slab: "half-yearly earnings from X to Y pay Z".
+model PayrollTaxSlab {
+  id          String @id @default(cuid())
+  settingId   String
+  fromPaise   Int
+  /// Null means "and above".
+  toPaise     Int?
+  amountPaise Int
+  sortOrder   Int    @default(0)
+
+  setting PayrollSetting @relation(fields: [settingId], references: [id], onDelete: Cascade)
+
+  @@index([settingId, sortOrder])
+  @@map("payroll_tax_slabs")
+}
+
+model PayrollRun {
+  id       String @id @default(cuid())
+  branchId String
+  /// 1-12.
+  month    Int
+  year     Int
+
+  status      PayrollRunStatus @default(DRAFT)
+  workingDays Int
+
+  /// Totals, denormalised so a list of runs does not need every payslip.
+  grossPaise                Int @default(0)
+  deductionsPaise           Int @default(0)
+  netPaise                  Int @default(0)
+  employerContributionPaise Int @default(0)
+  headcount                 Int @default(0)
+
+  notes         String?
+  createdById   String?
+  approvedById  String?
+  approvedAt    DateTime?
+  paidAt        DateTime?
+  paymentMode   PaymentMode?
+  bankAccountId String?
+  /// The expense voucher posted when the run was paid.
+  voucherId     String?
+  cancelledAt   DateTime?
+  cancelReason  String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  branch   Branch    @relation(fields: [branchId], references: [id])
+  payslips Payslip[]
+
+  @@unique([branchId, year, month])
+  @@index([branchId, status])
+  @@map("payroll_runs")
+}
+
+model Payslip {
+  id         String @id @default(cuid())
+  runId      String
+  employeeId String
+
+  /// Days in the period the employee was paid for.
+  workingDays Int
+  lopDays     Decimal @default(0) @db.Decimal(5, 2)
+  paidDays    Decimal @db.Decimal(5, 2)
+
+  grossPaise                Int @default(0)
+  deductionsPaise           Int @default(0)
+  netPaise                  Int @default(0)
+  employerContributionPaise Int @default(0)
+
+  /// Entered by the accountant from their CA's figure; see ADR-034.
+  manualTdsPaise Int @default(0)
+
+  remarks   String?
+  excluded  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  run      PayrollRun    @relation(fields: [runId], references: [id], onDelete: Cascade)
+  employee Employee      @relation(fields: [employeeId], references: [id])
+  lines    PayslipLine[]
+
+  @@unique([runId, employeeId])
+  @@index([employeeId])
+  @@map("payslips")
+}
+
+/// Every figure on a payslip, stored rather than recomputed on read: a rate
+/// change next year must not silently restate what someone was paid.
+model PayslipLine {
+  id          String              @id @default(cuid())
+  payslipId   String
+  componentId String?
+  label       String
+  kind        SalaryComponentKind
+  amountPaise Int
+  isStatutory Boolean             @default(false)
+  sortOrder   Int                 @default(0)
+
+  payslip   Payslip          @relation(fields: [payslipId], references: [id], onDelete: Cascade)
+  component SalaryComponent? @relation(fields: [componentId], references: [id])
+
+  @@index([payslipId, sortOrder])
+  @@map("payslip_lines")
 }

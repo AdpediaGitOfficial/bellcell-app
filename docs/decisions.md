@@ -512,3 +512,148 @@ impossible.
 
 **Cost.** One more thing for a new page to do, and a test that will fail
 noisily for anyone who adds a page without it — which is the point.
+
+---
+
+## ADR-032 — Payroll deducts nothing statutory until someone switches it on
+
+**Decision.** Every statutory toggle in `PayrollSetting` defaults to `false`,
+and a branch with no settings row at all is treated as everything-off. PF, ESI
+and professional tax appear on a payslip only after a person with approval
+rights has enabled them and entered the rate. The rates shipped in the schema
+are defaults for a *form field*, not constants in the calculation.
+
+**Why.** The two possible defaults are not symmetrical. Defaulting PF **on**
+means an institute that is not registered with the EPFO silently withholds
+12% of its staff's pay and remits it nowhere — money taken from people under
+a false description. Defaulting **off** means an institute that *is*
+registered sees a payslip with no PF on it, which is conspicuous and gets
+fixed on the first run.
+
+Rates also change by notification, and this code will outlive the current
+ones. A hard-coded 12% would quietly become wrong; a settings field with 12%
+in it stays visibly editable.
+
+**Cost.** A first run at a registered institute will be wrong until someone
+visits the settings screen. The run page therefore says, in as many words,
+that no statutory deductions are configured and links to the settings.
+
+---
+
+## ADR-033 — Salary structures are dated, and a revision never rewrites history
+
+**Decision.** `SalaryStructure` carries `effectiveFrom` / `effectiveTo` and a
+revision **creates a new row**, closing the previous one the day before. A
+payroll run reads the structure in force on the last day of the month it
+covers — not the newest one. Payslip figures are additionally written down as
+`PayslipLine` rows rather than recomputed on read.
+
+**Why.** Both halves are needed, and for different reasons.
+
+Dating fixes the back-dated run: payroll for March, drafted in May after an
+April raise, must pay March's salary. Picking "the latest structure" gets this
+wrong, and the error is invisible — the number simply looks like a number.
+
+Storing the computed lines fixes the opposite direction: an auditor opening
+last year's payslip must see what was actually paid, even though the rates,
+the ceiling and the structure have all moved since. A payslip that recalculates
+itself on read is not a record of anything.
+
+**Cost.** More rows, and a settings change does not retroactively fix a
+mistake in an already-drafted run. Cancelling and re-opening the run is the
+remedy, which is also the honest audit trail.
+
+---
+
+## ADR-034 — Income tax is not computed; the monthly figure is entered
+
+**Decision.** There is no TDS engine. `Payslip.manualTdsPaise` holds a figure
+the accountant types in, and the payroll settings screen says why.
+
+**Why.** Monthly TDS on salary depends on the employee's choice between the
+old and new regime, their declared investments and rent, their other income,
+their previous employer's figures, and a projection over the remaining
+financial year that gets revised as declarations arrive. A plausible-looking
+automatic number would be wrong for most staff, and the consequence is not a
+cosmetic error — it is a wrong return filed in the institute's name.
+
+A blank field that the institute's accountant fills from their own working is
+less impressive and more correct. If the institute later wants this automated,
+it is a module with its own sign-off, not a formula.
+
+**Cost.** Someone types a number every month. The payslip and the salary
+register carry it like any other deduction.
+
+---
+
+## ADR-035 — Only money that actually leaves the institute reaches the ledger
+
+**Decision.** Paying a run posts **two** expense vouchers through
+`recordDailyTransaction`: one for total **net pay**, one for the employer's own
+PF/ESI contribution. The **gross is never posted**. PF and ESI withheld from
+staff reach the ledger later, as an ordinary voucher, when the challan is paid.
+
+**Why.** Gross pay is not an outflow. ₹1,00,000 of gross with ₹12,000 withheld
+means ₹88,000 left the bank this month and ₹12,000 is a liability sitting
+with the institute until the challan clears. Posting the gross would overstate
+expenditure in the month of payroll and then double-count when the challan is
+actually paid.
+
+Posting through the accounts service rather than writing ledger rows directly
+is the same rule as everywhere else: there is exactly one way money enters the
+ledger, which is why the Day Book's identity holds.
+
+**Verified**, not assumed: an integration test adds up every ledger credit the
+run produced and asserts it equals net + employer contribution, with ESI
+active so that the employee and employer figures differ and the two cannot be
+confused. A SQL cross-check on the demo data shows ledger money-out of
+₹3,71,577.11 against a gross of ₹3,70,787.11 — close enough to look right and
+different enough to prove the distinction is real.
+
+**Cost.** The Day Book shows salary in two lines, not one, and the statutory
+remittance appears in a later month. Both are what the books should say.
+
+---
+
+## ADR-036 — Preparing payroll and approving it are different permissions
+
+**Decision.** `people.payroll` splits by action. An `ACCOUNTANT` has
+view/create/update/export: they open the run, enter unpaid days, fix the
+figures. Only `approve` — held by `ADMIN` and `SUPER_ADMIN` — can freeze a
+run, record its payment, or change the statutory rates. Approving also freezes
+the figures: after it, unpaid days and TDS cannot be edited at all.
+
+**Why.** Payroll is the largest recurring payment an institute makes, and the
+person who computes what everyone is owed should not be the person who
+releases it. This is the same separation the matrix already applies to fee
+concessions (ADR-005), applied to the bigger number.
+
+Freezing on approval is what makes the approval mean something. An approval
+that leaves the figures editable approves nothing.
+
+**Cost.** Two people are needed to run payroll, and a correction after
+approval means cancelling the run and opening a new one. The run page says so
+before you approve.
+
+---
+
+## ADR-037 — Unpaid days are entered on the run, not counted from attendance
+
+**Decision.** Each payslip carries `lopDays`, typed in on the run screen.
+There is no attendance capture, and the payroll screens say so.
+
+**Why.** Attendance is explicitly out of scope (open question #4 and the
+out-of-scope list), and payroll cannot wait for it: a month's salary has to be
+paid whether or not a register exists. Entering the loss-of-pay days is what
+every institute of this size does anyway, from a leave ledger kept in the
+office.
+
+Pro-rating is on a **calendar-day** basis — 27/30 for three unpaid days — with
+`standardWorkingDays` available for institutes that pay on a 26-day month
+instead. Both are assumptions and both are in one function.
+
+**Cost.** A typo in unpaid days is a wrong payslip, which is why the figure is
+re-validated on the server (proved by stripping the input's `max` attribute at
+runtime and confirming 99 unpaid days in a 31-day month is still refused) and
+why approval freezes it. If attendance is later built, it feeds this field
+rather than replacing it.

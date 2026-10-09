@@ -24,8 +24,10 @@ import {
   getEmployeeRecord,
   type EmployeeRecord,
 } from '../queries'
+import { computeEarnings, structureInForce } from '@/lib/payroll/core'
 import { RecordTabs, isTab, type TabKey } from './tabs'
 import { EducationTab } from './EducationTab'
+import { SalaryTab } from './SalaryTab'
 import { ExperienceTab } from './ExperienceTab'
 import { LanguagesTab } from './LanguagesTab'
 import { AccessTab } from './AccessTab'
@@ -62,16 +64,22 @@ export default async function EmployeeRecordPage({
   // recording their degree.
   const canAdminAccess = can(user, 'settings.user', 'update')
   const canCreateAccess = can(user, 'settings.user', 'create')
+  // What someone is paid is gated separately from their personnel record.
+  const canViewSalary = can(user, 'people.payroll', 'view')
+  const canEditSalary = can(user, 'people.payroll', 'update')
 
-  const hidden: TabKey[] = canAdminAccess || canCreateAccess ? [] : ['access']
+  const hidden: TabKey[] = []
+  if (!canAdminAccess && !canCreateAccess) hidden.push('access')
+  if (!canViewSalary) hidden.push('salary')
   const requested: TabKey = isTab(rawTab) ? rawTab : 'personal'
   const tab: TabKey = hidden.includes(requested) ? 'personal' : requested
 
-  const [{ departments, languages }, superAdminCount] = await Promise.all([
+  const [{ departments, languages }, superAdminCount, salary] = await Promise.all([
     employeeFilterOptions(),
     tab === 'access'
       ? db.user.count({ where: { role: 'SUPER_ADMIN', isActive: true } })
       : Promise.resolve(0),
+    tab === 'salary' ? loadSalary(employee.id) : Promise.resolve(null),
   ])
 
   const basePath = `/people/employees/${employee.id}`
@@ -177,6 +185,18 @@ export default async function EmployeeRecordPage({
             />
           )}
 
+          {tab === 'salary' && salary && (
+            <SalaryTab
+              employeeId={employee.id}
+              employeeName={name}
+              structures={salary.structures}
+              preview={salary.preview}
+              components={salary.components}
+              canEdit={canEditSalary}
+              payslipCount={salary.payslipCount}
+            />
+          )}
+
           {tab === 'access' && (
             <AccessTab
               employeeId={employee.id}
@@ -212,6 +232,84 @@ export default async function EmployeeRecordPage({
       </div>
     </>
   )
+}
+
+/**
+ * Everything the Salary tab needs, including a full-month preview run
+ * through the REAL payroll engine rather than a second sum that could
+ * disagree with what payroll actually pays.
+ */
+async function loadSalary(employeeId: string) {
+  const [structures, components, payslipCount] = await Promise.all([
+    db.salaryStructure.findMany({
+      where: { employeeId },
+      orderBy: { effectiveFrom: 'desc' },
+      include: {
+        lines: {
+          include: { component: true },
+          orderBy: { component: { sortOrder: 'asc' } },
+        },
+      },
+    }),
+    db.salaryComponent.findMany({
+      where: { archivedAt: null, isStatutory: false },
+      orderBy: [{ kind: 'asc' }, { sortOrder: 'asc' }],
+    }),
+    db.payslip.count({ where: { employeeId } }),
+  ])
+
+  const current = structureInForce(structures, new Date())
+  const preview = current
+    ? computeEarnings(
+        current.lines
+          .filter((l) => l.component.archivedAt === null)
+          .map((l) => ({
+            component: {
+              id: l.component.id,
+              code: l.component.code,
+              name: l.component.name,
+              kind: l.component.kind,
+              calculation: l.component.calculation,
+              percentage:
+                l.component.percentage === null
+                  ? null
+                  : Number(l.component.percentage),
+              partOfBasic: l.component.partOfBasic,
+              proRated: l.component.proRated,
+              isStatutory: l.component.isStatutory,
+              sortOrder: l.component.sortOrder,
+            },
+            amountPaise: l.amountPaise,
+          })),
+        30,
+        30,
+      ).lines.map((l) => ({ label: l.label, amountPaise: l.amountPaise }))
+    : null
+
+  const serialise = (c: (typeof components)[number]) => ({
+    id: c.id,
+    name: c.name,
+    kind: c.kind as string,
+    calculation: c.calculation as string,
+    percentage: c.percentage?.toString() ?? null,
+  })
+
+  return {
+    structures: structures.map((s) => ({
+      id: s.id,
+      effectiveFrom: s.effectiveFrom,
+      effectiveTo: s.effectiveTo,
+      notes: s.notes,
+      lines: s.lines.map((l) => ({
+        id: l.id,
+        amountPaise: l.amountPaise,
+        component: serialise(l.component),
+      })),
+    })),
+    preview,
+    components: components.map(serialise),
+    payslipCount,
+  }
 }
 
 /** Sticky identity rail — the name and code must not scroll away. */
