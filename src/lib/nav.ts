@@ -57,6 +57,7 @@ export const NAV: NavGroup[] = [
     items: [
       { label: 'Student Attendance', href: '/academics/attendance', resource: 'academics.attendance', icon: 'ClipboardList' },
       { label: 'Staff Attendance', href: '/people/attendance', resource: 'people.staffAttendance', icon: 'CalendarCheck' },
+      { label: 'Leave', href: '/people/leave', resource: 'people.leave', icon: 'CalendarOff' },
     ],
   },
   {

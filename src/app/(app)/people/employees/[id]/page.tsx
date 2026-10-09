@@ -28,6 +28,8 @@ import { computeEarnings, structureInForce } from '@/lib/payroll/core'
 import { RecordTabs, isTab, type TabKey } from './tabs'
 import { EducationTab } from './EducationTab'
 import { SalaryTab } from './SalaryTab'
+import { LeaveTab } from './LeaveTab'
+import { balancesFor } from '@/lib/leave/service'
 import { ExperienceTab } from './ExperienceTab'
 import { LanguagesTab } from './LanguagesTab'
 import { AccessTab } from './AccessTab'
@@ -67,19 +69,23 @@ export default async function EmployeeRecordPage({
   // What someone is paid is gated separately from their personnel record.
   const canViewSalary = can(user, 'people.payroll', 'view')
   const canEditSalary = can(user, 'people.payroll', 'update')
+  const canViewLeave = can(user, 'people.leave', 'view')
 
   const hidden: TabKey[] = []
   if (!canAdminAccess && !canCreateAccess) hidden.push('access')
   if (!canViewSalary) hidden.push('salary')
+  if (!canViewLeave) hidden.push('leave')
   const requested: TabKey = isTab(rawTab) ? rawTab : 'personal'
   const tab: TabKey = hidden.includes(requested) ? 'personal' : requested
 
-  const [{ departments, languages }, superAdminCount, salary] = await Promise.all([
+  const leaveYear = new Date().getFullYear()
+  const [{ departments, languages }, superAdminCount, salary, leave] = await Promise.all([
     employeeFilterOptions(),
     tab === 'access'
       ? db.user.count({ where: { role: 'SUPER_ADMIN', isActive: true } })
       : Promise.resolve(0),
     tab === 'salary' ? loadSalary(employee.id) : Promise.resolve(null),
+    tab === 'leave' ? loadLeave(employee.id, leaveYear) : Promise.resolve(null),
   ])
 
   const basePath = `/people/employees/${employee.id}`
@@ -197,6 +203,10 @@ export default async function EmployeeRecordPage({
             />
           )}
 
+          {tab === 'leave' && leave && (
+            <LeaveTab year={leaveYear} balances={leave.balances} history={leave.history} />
+          )}
+
           {tab === 'access' && (
             <AccessTab
               employeeId={employee.id}
@@ -232,6 +242,39 @@ export default async function EmployeeRecordPage({
       </div>
     </>
   )
+}
+
+/** Balances for the current year, plus the whole leave history. */
+async function loadLeave(employeeId: string, year: number) {
+  const [balances, requests] = await Promise.all([
+    balancesFor(employeeId, year),
+    db.leaveRequest.findMany({
+      where: { employeeId },
+      orderBy: { fromDate: 'desc' },
+      take: 50,
+      include: {
+        leaveType: { select: { name: true, isPaid: true } },
+        decidedBy: { select: { fullName: true } },
+      },
+    }),
+  ])
+
+  return {
+    balances,
+    history: requests.map((r) => ({
+      id: r.id,
+      typeName: r.leaveType.name,
+      isPaid: r.leaveType.isPaid,
+      fromDate: r.fromDate,
+      toDate: r.toDate,
+      fromPortion: r.fromPortion,
+      toPortion: r.toPortion,
+      days: Number(r.days),
+      status: r.status,
+      decisionNote: r.decisionNote,
+      decidedBy: r.decidedBy?.fullName ?? null,
+    })),
+  }
 }
 
 /**

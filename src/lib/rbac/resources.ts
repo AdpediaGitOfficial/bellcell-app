@@ -49,6 +49,7 @@ export const RESOURCES = {
   'people.employee': 'People · Employees',
   'people.payroll': 'People · Payroll',
   'people.staffAttendance': 'People · Staff Attendance',
+  'people.leave': 'People · Leave',
 
   reports: 'Reports',
   masters: 'Masters',

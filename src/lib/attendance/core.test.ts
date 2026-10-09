@@ -204,6 +204,7 @@ describe('summariseStaffMonth', () => {
       unpaidLeave: 1,
       absent: 0,
       halfDays: 1,
+      paidHalfDays: 0,
       onDuty: 0,
       holidays: 1,
       lopDays: 1.5,
@@ -244,5 +245,25 @@ describe('calendar', () => {
   it('recognises a holiday date', () => {
     expect(isHoliday('2026-04-14', ['2026-04-14'])).toBe(true)
     expect(isHoliday('2026-04-13', ['2026-04-14'])).toBe(false)
+  })
+})
+
+describe('the paid/unpaid split survives half days', () => {
+  it('charges nothing for half a day of PAID leave', () => {
+    // Found while building leave: mapping every half day to HALF_DAY
+    // deducted 0.5 days for a paid half day, which is the opposite of what
+    // paid leave means.
+    expect(lopDaysFrom(T('PAID_HALF_DAY'))).toBe(0)
+  })
+
+  it('still charges half a day for an unpaid one', () => {
+    expect(lopDaysFrom(T('HALF_DAY'))).toBe(0.5)
+  })
+
+  it('counts both kinds separately in a month summary', () => {
+    const s = summariseStaffMonth(T('HALF_DAY', 'PAID_HALF_DAY', 'PAID_HALF_DAY'))
+    expect(s.halfDays).toBe(1)
+    expect(s.paidHalfDays).toBe(2)
+    expect(s.lopDays).toBe(0.5)
   })
 })

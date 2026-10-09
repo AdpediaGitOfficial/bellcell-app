@@ -62,6 +62,7 @@ model Branch {
   holidays            Holiday[]
   attendanceSessions  AttendanceSession[]
   staffAttendance     StaffAttendance[]
+  leaveRequests       LeaveRequest[]
 
   @@map("branches")
 }
@@ -101,6 +102,8 @@ model User {
   overrides UserPermissionOverride[]
   auditLogs AuditLog[]
 
+  leaveApplied          LeaveRequest[]      @relation("LeaveAppliedBy")
+  leaveDecided          LeaveRequest[]      @relation("LeaveDecidedBy")
   attendanceTaken       AttendanceSession[] @relation("AttendanceTakenBy")
   staffAttendanceMarked StaffAttendance[]   @relation("StaffAttendanceMarkedBy")
   assignedLeads         EnquiryLead[]       @relation("LeadAssignee")
@@ -1684,6 +1687,8 @@ model Employee {
   salaryStructures SalaryStructure[]
   payslips         Payslip[]
   attendance       StaffAttendance[]
+  leaveBalances    LeaveBalance[]
+  leaveRequests    LeaveRequest[]
 
   @@unique([branchId, employeeCode])
   @@index([branchId, status])
@@ -2065,8 +2070,12 @@ enum StaffAttendanceStatus {
   PRESENT
   /// Absent without any approved leave — unpaid.
   ABSENT
-  /// Half a working day, counted as 0.5 unpaid.
+  /// Half a working day away, unpaid — counted as 0.5 days' loss of pay.
   HALF_DAY
+  /// Half a working day away against a PAID leave type. Recorded so the
+  /// register stays truthful, but costs nothing: paid leave is paid
+  /// whether it is a whole day or half of one.
+  PAID_HALF_DAY
   /// Approved and paid. Does NOT reduce salary.
   PAID_LEAVE
   /// Approved but unpaid. Reduces salary.
@@ -2180,4 +2189,130 @@ model StaffAttendance {
   @@unique([employeeId, date])
   @@index([branchId, date])
   @@map("staff_attendance")
+}
+
+// ------------------------------------------------------------------ leave
+//
+// The attendance module distinguished PAID_LEAVE from UNPAID_LEAVE but had
+// nothing behind that judgement — somebody chose, day by day, from a
+// dropdown (ADR-039, open question #4a). This gives the choice a basis: an
+// entitlement, a balance, and an approval.
+//
+// The seam that matters: approving a request WRITES the staff attendance
+// rows for those dates, which payroll then reads for loss of pay. Leave does
+// not talk to payroll directly, so there is exactly one path from "away from
+// work" to "paid less", and it is the register.
+
+enum LeaveRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+/// Half days are the finest grain the register supports, so a request can
+/// start or end at midday but not at 11:20.
+enum DayPortion {
+  FULL
+  FIRST_HALF
+  SECOND_HALF
+}
+
+model LeaveType {
+  id   String @id @default(cuid())
+  code String @unique // CL, EL, SL, LOP
+  name String
+
+  /// False means every approved day of this type is a salary deduction.
+  /// This is the flag that decides PAID_LEAVE vs UNPAID_LEAVE on the
+  /// register, and therefore what payroll charges.
+  isPaid Boolean @default(true)
+
+  /// Days granted per employee per year. Zero means uncapped, which is what
+  /// an unpaid type normally wants.
+  annualEntitlementDays Decimal @default(0) @db.Decimal(5, 2)
+
+  /// Unused days that may roll into next year, and the ceiling on the
+  /// resulting opening balance.
+  allowCarryForward   Boolean @default(false)
+  carryForwardCapDays Decimal @default(0) @db.Decimal(5, 2)
+
+  /// A type that needs no sign-off is applied and approved in one step.
+  requiresApproval Boolean @default(true)
+
+  sortOrder  Int       @default(0)
+  archivedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  balances LeaveBalance[]
+  requests LeaveRequest[]
+
+  @@map("leave_types")
+}
+
+/// One employee's entitlement for one type in one calendar year.
+///
+/// `used` is maintained by the service when a request is approved or
+/// cancelled, rather than summed from requests on every read: the balance is
+/// what the office quotes to an employee, and it must not change meaning
+/// because an old request was edited.
+model LeaveBalance {
+  id          String @id @default(cuid())
+  employeeId  String
+  leaveTypeId String
+  year        Int
+
+  entitledDays       Decimal @default(0) @db.Decimal(5, 2)
+  carriedForwardDays Decimal @default(0) @db.Decimal(5, 2)
+  usedDays           Decimal @default(0) @db.Decimal(5, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee  Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveType LeaveType @relation(fields: [leaveTypeId], references: [id])
+
+  @@unique([employeeId, leaveTypeId, year])
+  @@index([employeeId, year])
+  @@map("leave_balances")
+}
+
+model LeaveRequest {
+  id          String @id @default(cuid())
+  branchId    String
+  employeeId  String
+  leaveTypeId String
+
+  fromDate    DateTime   @db.Date
+  toDate      DateTime   @db.Date
+  fromPortion DayPortion @default(FULL)
+  toPortion   DayPortion @default(FULL)
+
+  /// Working days the request consumes, net of holidays and half days.
+  /// Stored rather than recomputed, because the holiday calendar can change
+  /// after the fact and an approved request must stay explicable.
+  days Decimal @db.Decimal(5, 2)
+
+  reason String?
+  status LeaveRequestStatus @default(PENDING)
+
+  appliedById  String?
+  decidedById  String?
+  decidedAt    DateTime?
+  decisionNote String?
+  cancelledAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  branch    Branch    @relation(fields: [branchId], references: [id])
+  employee  Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  leaveType LeaveType @relation(fields: [leaveTypeId], references: [id])
+  appliedBy User?     @relation("LeaveAppliedBy", fields: [appliedById], references: [id])
+  decidedBy User?     @relation("LeaveDecidedBy", fields: [decidedById], references: [id])
+
+  @@index([branchId, status])
+  @@index([employeeId, fromDate])
+  @@map("leave_requests")
 }

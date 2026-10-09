@@ -136,3 +136,31 @@ describe('attendance permissions', () => {
     expect(can(counsellor, 'people.staffAttendance', 'view')).toBe(false)
   })
 })
+
+describe('leave permissions', () => {
+  const staff = { role: 'STAFF' as const }
+  const admin = { role: 'ADMIN' as const }
+  const accountant = { role: 'ACCOUNTANT' as const }
+  const faculty = { role: 'FACULTY' as const }
+
+  it('lets the front desk record a leave request', () => {
+    expect(can(staff, 'people.leave', 'create')).toBe(true)
+  })
+
+  it('does not let them decide it', () => {
+    expect(can(staff, 'people.leave', 'approve')).toBe(false)
+    expect(can(admin, 'people.leave', 'approve')).toBe(true)
+  })
+
+  it('lets an accountant read leave but not write it', () => {
+    // Leave writes the attendance register that payroll charges for, so the
+    // person running payroll must not be able to create leave either.
+    expect(can(accountant, 'people.leave', 'view')).toBe(true)
+    expect(can(accountant, 'people.leave', 'create')).toBe(false)
+    expect(can(accountant, 'people.leave', 'update')).toBe(false)
+  })
+
+  it('keeps faculty out — there is no self-service portal', () => {
+    expect(can(faculty, 'people.leave', 'view')).toBe(false)
+  })
+})

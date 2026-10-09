@@ -150,13 +150,16 @@ export function sessionsToReach(
 /**
  * ASSUMPTION: how each staff status maps to loss of pay.
  *
- *   ABSENT        1 day   — absent with no approved leave
- *   UNPAID_LEAVE  1 day   — approved, but unpaid
- *   HALF_DAY      0.5 day
- *   PAID_LEAVE    0       — the whole point of paid leave
- *   ON_DUTY       0       — working, just not here
- *   PRESENT       0
- *   HOLIDAY       0       — never a deduction, even if marked by mistake
+ *   ABSENT         1 day   — absent with no approved leave
+ *   UNPAID_LEAVE   1 day   — approved, but unpaid
+ *   HALF_DAY       0.5 day — half a day away, unpaid
+ *   PAID_HALF_DAY  0       — half a day away against PAID leave. Costs
+ *                            nothing: paid leave is paid whether it is a
+ *                            whole day or half of one.
+ *   PAID_LEAVE     0       — the whole point of paid leave
+ *   ON_DUTY        0       — working, just not here
+ *   PRESENT        0
+ *   HOLIDAY        0       — never a deduction, even if marked by mistake
  *
  * LEAVE BALANCES ARE NOT MODELLED. Whether a particular day of leave is paid
  * is a judgement the office makes when marking it, not something this system
@@ -167,6 +170,7 @@ export const LOP_WEIGHT: Record<StaffAttendanceStatus, number> = {
   ABSENT: 1,
   UNPAID_LEAVE: 1,
   HALF_DAY: 0.5,
+  PAID_HALF_DAY: 0,
   PAID_LEAVE: 0,
   ON_DUTY: 0,
   PRESENT: 0,
@@ -194,7 +198,9 @@ export interface StaffMonthSummary {
   paidLeave: number
   unpaidLeave: number
   absent: number
+  /** Unpaid half days — the ones that cost money. */
   halfDays: number
+  paidHalfDays: number
   onDuty: number
   holidays: number
   lopDays: number
@@ -213,6 +219,7 @@ export function summariseStaffMonth(
     unpaidLeave: count('UNPAID_LEAVE'),
     absent: count('ABSENT'),
     halfDays: count('HALF_DAY'),
+    paidHalfDays: count('PAID_HALF_DAY'),
     onDuty: count('ON_DUTY'),
     holidays: count('HOLIDAY'),
     lopDays: lopDaysFrom(statuses),
@@ -265,7 +272,8 @@ export const STUDENT_STATUS_LABELS: Record<AttendanceStatus, string> = {
 export const STAFF_STATUS_LABELS: Record<StaffAttendanceStatus, string> = {
   PRESENT: 'Present',
   ABSENT: 'Absent',
-  HALF_DAY: 'Half day',
+  HALF_DAY: 'Half day (unpaid)',
+  PAID_HALF_DAY: 'Half day (paid)',
   PAID_LEAVE: 'Paid leave',
   UNPAID_LEAVE: 'Unpaid leave',
   ON_DUTY: 'On duty',

@@ -70,14 +70,36 @@ much rework the answer causes if it arrives late.
      three lates into an absence need that rule adding.
    - **Is an excused absence out of the denominator?** We say yes — neither
      present nor penalised. Some universities count it present.
-   - **Leave balances and entitlements are NOT modelled.** Whether a day is
-     paid or unpaid is typed when marking it. A real leave module (casual /
-     earned / medical balances, accrual, carry-forward, an approval
-     workflow) is a project of its own. Wanted?
+   - **Leave is now modelled** — see #4b. Paid or unpaid follows from the
+     leave type rather than being typed per day.
    - **Is there a weekly off?** None is assumed. The holiday master can
      generate one, but nobody has said whether the institute has one.
    - **Half days** are the only fraction supported. Hourly or period-level
      loss of pay is not.
+
+4b. **Leave — built, and the entitlements are placeholders.** Casual 12,
+   sick 10, earned 15 with a 30-day carry-forward cap, plus an uncapped
+   loss-of-pay type. **These are a starting point, not the institute's
+   policy.** Confirm:
+   - **The entitlement per type**, and whether they differ by grade,
+     seniority or between teaching and non-teaching staff. They currently do
+     not.
+   - **Accrual.** Entitlement is granted in full on 1 January. Many
+     institutes accrue monthly, and pro-rate for someone who joins in
+     August. Not modelled.
+   - **Carry-forward**: allowed per type with a cap on the *carried* amount
+     (ADR-048). An institute that caps the resulting total instead needs one
+     function changed. Encashment of unused leave is not modelled at all.
+   - **Does a holiday inside a leave span consume entitlement?** We say no
+     (ADR-047).
+   - **Who approves?** Currently anyone with `people.leave:approve` — ADMIN
+     and SUPER_ADMIN. There is no reporting line, no delegation and no
+     escalation.
+   - **Maternity, paternity and medical leave** have statutory minimums in
+     India and are not modelled as anything other than ordinary paid types.
+   - **Self-service.** The office records leave on behalf of staff; faculty
+     cannot reach the screen. Should employees apply for their own leave?
+     That is the portal question (#13) in a smaller form.
 
 5. **Permission matrix sign-off.** `src/lib/rbac/matrix.ts` is a proposal.
    Print it and have the principal sign it. Specifically: should a counsellor

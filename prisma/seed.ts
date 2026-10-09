@@ -1311,6 +1311,62 @@ async function main() {
     }
   }
 
+
+  // ------------------------------------------------------------ leave types
+  // Entitlements are the institute's to set; these are a starting point and
+  // the master screen says so. The paid flag is the one that costs money.
+  const leaveTypeSpecs: [string, string, boolean, number, boolean, number, number][] = [
+    // code, name, isPaid, daysPerYear, carryForward, cap, sortOrder
+    ['CL', 'Casual leave', true, 12, false, 0, 1],
+    ['SL', 'Sick leave', true, 10, false, 0, 2],
+    ['EL', 'Earned leave', true, 15, true, 30, 3],
+    ['LOP', 'Loss of pay', false, 0, false, 0, 9],
+  ]
+  for (const [code, name, isPaid, days, carry, cap, sortOrder] of leaveTypeSpecs) {
+    await db.leaveType.upsert({
+      where: { code },
+      update: {},
+      create: {
+        code,
+        name,
+        isPaid,
+        annualEntitlementDays: new Prisma.Decimal(days),
+        allowCarryForward: carry,
+        carryForwardCapDays: new Prisma.Decimal(cap),
+        sortOrder,
+      },
+    })
+  }
+
+  // A couple of decided requests so the screen is not empty. These are
+  // recorded WITHOUT touching the register, because the August staff
+  // attendance above was seeded directly and approving here would fight it.
+  const clType = await db.leaveType.findUnique({ where: { code: 'CL' } })
+  const lopType = await db.leaveType.findUnique({ where: { code: 'LOP' } })
+  const leaveSeedEmployees = await db.employee.findMany({
+    where: { branchId: main_.id, employeeCode: { in: ['EMP-003', 'EMP-006'] } },
+    select: { id: true, employeeCode: true },
+  })
+
+  if (clType && lopType && (await db.leaveRequest.count()) === 0) {
+    for (const employee of leaveSeedEmployees) {
+      const isCasual = employee.employeeCode === 'EMP-003'
+      await db.leaveRequest.create({
+        data: {
+          branchId: main_.id,
+          employeeId: employee.id,
+          leaveTypeId: isCasual ? clType.id : lopType.id,
+          fromDate: new Date(isCasual ? '2026-09-14T00:00:00.000Z' : '2026-09-21T00:00:00.000Z'),
+          toDate: new Date(isCasual ? '2026-09-15T00:00:00.000Z' : '2026-09-21T00:00:00.000Z'),
+          days: new Prisma.Decimal(isCasual ? 2 : 1),
+          reason: isCasual ? 'Family function' : 'Personal, no leave left',
+          status: 'PENDING',
+        },
+      })
+    }
+    console.log('  \u00b7 4 leave types and 2 pending requests')
+  }
+
   console.log('\nSeed complete.')
   console.log(`  Sign in with any of:`)
   for (const [email, , role] of userSpecs) {

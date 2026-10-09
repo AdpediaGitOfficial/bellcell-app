@@ -108,6 +108,13 @@ docs/                     analysis, decisions, design system, open questions
 - **Attendance rules live in `src/lib/attendance/core.ts`** — the shortage
   thresholds belong to the affiliating university, so they are parameters,
   and nothing acts on them automatically (ADR-041).
+- **Leave writes the attendance register; it never calls payroll.** One path
+  from an absence to a deduction, so two sources can never disagree
+  (ADR-045).
+- **An action's outcome must outlive whatever triggered it.** If a server
+  action changes the state that decides whether its own button renders, put
+  the `useActionState` above that decision — this has silently swallowed a
+  one-time password, a voucher number and a confirmation (ADR-051).
 - **Money moves only through `src/lib/fees/service.ts`**, inside a
   transaction. Never write `paidPaise` or a ledger row by hand.
 - **Brand `#00A59F` is never a background for small white text** (3.05:1,
@@ -244,16 +251,36 @@ must not dock salaries — so the run says how much of the month was actually
 marked rather than letting an empty register look like a clean one.
 ⚠ **Nothing bars a student from an examination.** The register reports
 Clear / Condonation / Short against the affiliating university's thresholds
-and acts on none of it (ADR-041). ⚠ **Leave balances are not modelled** —
-whether a day of leave is paid is a judgement made when marking it.
+and acts on none of it (ADR-041).
+
+**Leave — complete:**
+
+| Screen | What works |
+|---|---|
+| Leave | Approval queue, record a request on behalf of staff, approve / reject with a reason, cancel with the balance returned, carry-forward |
+| Employee → Leave | Balances per type for the year, uncapped types shown as uncapped, and the whole history |
+| Masters → Leave types | Entitlement, paid or unpaid, carry-forward cap, whether approval is needed |
+
+**Leave completes the chain.** Approving a request writes `PAID_LEAVE` or
+`UNPAID_LEAVE` onto the staff attendance register, and payroll reads the
+register — so there is exactly one path from "away from work" to "paid
+less", whichever route the absence came by (ADR-045). The **leave type**
+decides paid or unpaid, not whoever happens to be at the desk (ADR-046).
+
+⚠ **Holidays inside a leave span cost nothing** (ADR-047) — Friday to
+Tuesday over a closed weekend is three days, not five. ⚠ **Carry-forward is
+a button somebody presses**, never automatic: a balance that changed by
+itself cannot be explained to the person whose leave it is (ADR-048).
+⚠ **There is no self-service portal** — the office records leave on behalf
+of staff, and faculty cannot reach the screen at all.
 
 ---
 
 ## All four quoted modules are built
 
 Enquiry · Application (admissions + fees) · Employee (records, logins,
-payroll and attendance) · Accounts — plus student attendance, which the
-quotation never asked for but an affiliated institute needs.
+payroll, attendance and leave) · Accounts — plus student attendance, which
+the quotation never asked for but an affiliated institute needs.
 
 Remaining gaps are tracked in
 [`docs/open-questions.md`](docs/open-questions.md). Three of them matter more

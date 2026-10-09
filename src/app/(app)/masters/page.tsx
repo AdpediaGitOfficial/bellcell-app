@@ -83,6 +83,11 @@ const MASTERS: {
         href: '/masters/salary-components',
         description: 'Basic, DA, HRA, allowances and recoveries',
       },
+      {
+        label: 'Leave type',
+        href: '/masters/leave-types',
+        description: 'Casual, earned, loss of pay — and what each costs',
+      },
       { label: 'Religion', description: 'Used on the admission form' },
       {
         label: 'Holidays',

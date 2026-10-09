@@ -57,6 +57,7 @@ export const MATRIX: Record<UserRole, RoleMatrix> = {
     'people.employee': ALL,
     'people.payroll': ALL, // including approve — see the ACCOUNTANT row
     'people.staffAttendance': ALL,
+    'people.leave': ALL, // including approve
     reports: VIEW_EXPORT,
     masters: ALL,
     'settings.user': ALL,
@@ -79,8 +80,9 @@ export const MATRIX: Record<UserRole, RoleMatrix> = {
     'people.payroll': CRU_EXPORT,
     // Reads the register payroll is computed from, but does not mark it.
     // Whoever runs payroll should not also be able to quietly change the
-    // attendance it reads.
+    // attendance it reads — nor the leave that writes it.
     'people.staffAttendance': VIEW_EXPORT,
+    'people.leave': VIEW_EXPORT,
     reports: VIEW_EXPORT,
     masters: VIEW,
   },
@@ -123,6 +125,9 @@ export const MATRIX: Record<UserRole, RoleMatrix> = {
     // call when a lecturer is away, but sees no salary consequence of it.
     'academics.attendance': CRU_EXPORT,
     'people.staffAttendance': CRU_EXPORT,
+    // Records leave requests on behalf of staff, but someone senior decides
+    // them. There is no self-service portal (open question #13).
+    'people.leave': CRU_EXPORT,
     reports: VIEW,
     masters: VIEW,
   },

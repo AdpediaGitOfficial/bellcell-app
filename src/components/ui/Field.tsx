@@ -55,10 +55,14 @@ export function Input({
 
 export function Textarea({
   className,
+  ref,
   ...props
-}: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+}: React.TextareaHTMLAttributes<HTMLTextAreaElement> & {
+  ref?: React.Ref<HTMLTextAreaElement>
+}) {
   return (
     <textarea
+      ref={ref}
       className={cn(CONTROL, 'h-auto min-h-[76px] py-2', className)}
       {...props}
     />
@@ -68,10 +72,13 @@ export function Textarea({
 export function Select({
   className,
   children,
+  ref,
   ...props
-}: React.SelectHTMLAttributes<HTMLSelectElement>) {
+}: React.SelectHTMLAttributes<HTMLSelectElement> & {
+  ref?: React.Ref<HTMLSelectElement>
+}) {
   return (
-    <select className={cn(CONTROL, 'pr-8', className)} {...props}>
+    <select ref={ref} className={cn(CONTROL, 'pr-8', className)} {...props}>
       {children}
     </select>
   )

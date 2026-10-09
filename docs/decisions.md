@@ -804,3 +804,140 @@ showed the date twice.
 The model carries a comment pointing at the migration, because the next
 person to read the schema will otherwise assume the `@@unique` covers it —
 which is exactly the assumption that produced the bug.
+
+---
+
+## ADR-045 — Leave writes the register; it never speaks to payroll
+
+**Decision.** Approving a leave request writes `StaffAttendance` rows for the
+working days it covers. Payroll reads the register, as it already did
+(ADR-043). Leave has no code path to a payslip.
+
+**Why.** There are two ways an absence can arise — somebody marks the
+register by hand, or somebody approves leave — and only one of them should
+reach the money. Letting payroll consult leave *as well as* attendance would
+mean two sources that can disagree, and the day they disagree is the day
+somebody is paid wrongly with no single place to look.
+
+One consequence worth stating: the register is the audit trail. A payslip
+with three unpaid days can always be traced to three dated rows, whichever
+route put them there.
+
+**Cost.** A leave approved after a payroll run has been approved does not
+restate it — the run is frozen (ADR-043). The leave screen says so.
+
+---
+
+## ADR-046 — The leave TYPE decides paid or unpaid, not whoever marks the register
+
+**Decision.** `LeaveType.isPaid` is a single flag, and
+`attendanceStatusFor()` turns it into `PAID_LEAVE` or `UNPAID_LEAVE` on the
+register. The person approving chooses a *type*, never a pay consequence.
+
+**Why.** The attendance module shipped with paid-versus-unpaid as a dropdown
+somebody picked from, day by day, with nothing behind it (open question #4a).
+That is a policy decision being made by whoever happens to be at the desk.
+Putting it on the type means the institute decides once, in a master screen,
+and every clerk's choice follows from it.
+
+Changing a type from paid to unpaid applies **from then on**. It does not
+restate leave already approved, because those days are already on the
+register and may already have been paid. The master screen says this.
+
+---
+
+## ADR-047 — A holiday inside a leave span costs nothing
+
+**Decision.** `leaveDays()` removes declared holidays and weekly offs before
+counting, so Friday to Tuesday over a closed weekend consumes three days of
+entitlement, not five. Holidays are removed **before** the half-day markers
+are applied, so a span that happens to begin on a Sunday does not lose its
+"leaves at midday" marker to the Sunday.
+
+**Why.** Charging someone entitlement for a day the institute was shut is
+indefensible. The opposite rule does exist — some employers count calendar
+days for long leave — but it would be a different function, and this is the
+reading nobody has to apologise for.
+
+**Cost.** A leave request's day count depends on the holiday calendar at the
+moment it was made, which is why `LeaveRequest.days` is stored rather than
+recomputed: declaring a holiday in March must not silently change what a
+January request consumed.
+
+---
+
+## ADR-048 — Carry-forward is a button somebody presses
+
+**Decision.** `runCarryForward` moves unused days into the next year for
+types that allow it, capped. Nothing calls it automatically — not on the
+first login of January, not on a schedule.
+
+**Why.** A balance that changes by itself is one nobody can explain to the
+person whose leave it is. "You had 9 days in December and 6 now" needs an
+answer, and "the system did it overnight" is not one. A dated audit entry
+naming who ran it, for which year, is.
+
+**ASSUMPTION:** the cap applies to the **carried amount**, not to the
+resulting total. An institute that caps the total instead changes one
+function.
+
+---
+
+## ADR-049 — Cancelling leave does not revert a day somebody corrected by hand
+
+**Decision.** Cancelling an approved request returns the balance and deletes
+the register rows **that still hold the status the leave wrote**. A day since
+changed to `ABSENT` by the office is left alone, and the result reports how
+many were cleared and how many were kept.
+
+**Why.** The office finding out that an approved leave was actually an
+unauthorised absence, and recording that, is a deliberate correction. Having
+a cancellation silently undo it would overwrite a human judgement with a
+bookkeeping side effect — and it would quietly reduce somebody's loss of pay.
+
+Reporting both numbers matters as much as the behaviour: "3 cleared, 1 left
+alone because it had been changed by hand" tells the operator exactly what
+state they are now in.
+
+---
+
+## ADR-050 — A paid half day costs nothing, so it needs its own status
+
+**Decision.** `StaffAttendanceStatus` gained `PAID_HALF_DAY`, weighted zero
+in the loss-of-pay table.
+
+**Why.** This was a bug in the attendance module, found by writing the leave
+module's status-mapping table. Attendance had one `HALF_DAY` status worth 0.5
+days of deduction. Map a **paid** half-day leave onto it and the employee is
+docked half a day for leave the institute said was paid — the exact opposite
+of what the type means. Mapping it to `PAID_LEAVE` instead would get the
+money right and lose the fact that they were only away half the day.
+
+Neither trade is necessary, so there are now two half-day statuses: one that
+costs money and one that does not. The register stays truthful and the
+payslip stays right.
+
+---
+
+## ADR-051 — An action's outcome must outlive whatever triggered it
+
+**Decision.** When a server action changes the state that decides whether its
+own trigger is rendered, the `useActionState` holding the result lives in a
+component **above** that decision — usually one client component owning the
+whole screen's actions, with the outcome banners at the top.
+
+**Why.** This has now gone wrong three times, and each time the thing lost
+was the thing that mattered:
+
+* creating an employee login revalidated the page, flipped the Access tab to
+  its "has a login" branch, and took the **one-time password** with it — the
+  account existed and nobody knew its password;
+* paying a payroll run flipped the status and unmounted the panel holding
+  the **voucher numbers** the accountant needed to write down;
+* approving leave moved the row from the pending list to the decided one,
+  unmounting the buttons and the confirmation that the register had been
+  written.
+
+Each was invisible in code review and obvious within seconds of a browser
+pass. The rule is cheap to follow and the failure mode is silent, which is
+the worst combination to leave to vigilance.
