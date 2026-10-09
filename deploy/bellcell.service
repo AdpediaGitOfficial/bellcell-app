@@ -1,0 +1,58 @@
+# /etc/systemd/system/bellcell.service
+#
+# Runs the standalone Next server as an unprivileged user. Plain Node 22,
+# no container runtime.
+#
+#   sudo cp deploy/bellcell.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now bellcell
+
+[Unit]
+Description=Bell Cell EduSuite
+Documentation=file:///srv/bellcell/app/docs/deployment.md
+After=network-online.target postgresql.service
+Wants=network-online.target
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=bellcell
+Group=bellcell
+WorkingDirectory=/srv/bellcell/app/.next/standalone
+
+# Secrets live in a root-owned file the service user can read, never in
+# this unit (systemd units are world-readable).
+EnvironmentFile=/srv/bellcell/app/.env
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Environment=HOSTNAME=127.0.0.1
+
+ExecStart=/usr/bin/node server.js
+
+Restart=always
+RestartSec=5
+# Give up relaunching if it crashes 5 times in a minute, so a broken deploy
+# shows up in `systemctl status` instead of looping silently.
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=bellcell
+
+# The process serves HTTP and reads a database. It needs nothing else.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/srv/bellcell/app/.next/standalone/.next/cache
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=false
+
+[Install]
+WantedBy=multi-user.target

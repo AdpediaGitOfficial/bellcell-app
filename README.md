@@ -31,9 +31,9 @@ psql -c "ALTER DATABASE bellcell OWNER TO bellcell;"
 
 # 2. Configure
 cp .env.example .env
-# edit DATABASE_URL, then generate a secret:
-node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
-# paste it into SESSION_SECRET
+# edit DATABASE_URL. There is no secret to generate: a session cookie
+# carries an opaque random token and the server stores only its SHA-256,
+# so there is no payload to sign.
 
 # 3. Install, migrate, seed
 npm install
@@ -64,13 +64,22 @@ by the permission matrix, so a counsellor has no Accounts section at all.
 
 ```bash
 npm run dev         # dev server
-npm run build       # production build
+npm run build       # production build, then assembles .next/standalone
+npm run start       # run the standalone build (what the server runs)
 npm run check       # typecheck + lint + tests
-npm run db:migrate  # create/apply a migration
-npm run db:seed     # seed demo data (idempotent)
+npm run db:migrate  # create/apply a migration (development only)
+npm run db:deploy   # apply committed migrations (what production runs)
+npm run db:seed     # seed demo data (idempotent) — never on production
 npm run db:studio   # browse the database
 npm run test:int    # integration tests (needs a running database)
+npm run deploy      # npm ci + db:deploy + build, in that order
 ```
+
+`build` ends by running `scripts/assemble-standalone.mjs`, which copies
+`.next/static` and `public` into `.next/standalone`. Next.js omits them, and
+without them the app serves HTML with no CSS or JavaScript — a missing copy
+that looks like a broken deployment. It is wired as `postbuild` so it cannot
+be skipped, and CI asserts the result exists.
 
 ## Project layout
 
@@ -84,6 +93,9 @@ src/lib/
   charts/palette.ts       validated chart palette       (ADR-009)
 src/components/           shell, ui primitives, charts
 src/app/(app)/            authenticated application
+src/middleware.ts         security headers + per-request CSP nonce
+deploy/                   systemd unit, nginx site, backup + restore drill
+scripts/                  assemble-standalone.mjs (the postbuild step)
 docs/                     analysis, decisions, design system, open questions
 ```
 
@@ -120,6 +132,39 @@ docs/                     analysis, decisions, design system, open questions
 - **Brand `#00A59F` is never a background for small white text** (3.05:1,
   fails WCAG AA). Filled controls use `brand-700`. The `Button` component does
   not expose the unsafe variant.
+
+## Deploying
+
+Plain **Node 22 + PostgreSQL 16 on one Linux server**. No Docker, no
+container runtime, no orchestrator. The deployable artefact is
+`.next/standalone/` — about 110 MB against ~980 MB of `node_modules`, so a
+release is a directory copy and a service restart.
+
+**[`docs/deployment.md`](docs/deployment.md) is the runbook**: eight numbered
+steps from a bare Ubuntu box to a working login, then upgrading, rolling
+back, operating, and what is still missing before a real go-live.
+
+| | |
+|---|---|
+| Process | `node .next/standalone/server.js` under systemd (`deploy/bellcell.service`) |
+| Front | nginx + certbot (`deploy/nginx.conf`), app bound to `127.0.0.1` |
+| Health | `GET /api/health` — `200` when it can query Postgres, `503` when it cannot, recovering without a restart |
+| Migrations | `prisma migrate deploy` only. Never `migrate dev` or `db push` against production — both can rewrite the schema |
+| Backups | `deploy/backup.sh` nightly, `deploy/restore-drill.sh` quarterly |
+| CI | `.github/workflows/ci.yml` — typecheck, lint, unit, integration, build, and a boot-and-health smoke test |
+
+Three things worth knowing before you read the runbook:
+
+- **There is no session secret to configure.** `.env.example` once asked for
+  a `SESSION_SECRET` that no code ever read; it is gone. A setting nobody
+  uses is worse than no setting, because the next person assumes it protects
+  something.
+- **nginx overwrites `X-Forwarded-For`** with the real peer address rather
+  than appending to it, because the login throttle counts failures per
+  address and a client-supplied header would let an attacker pick a fresh
+  address per request.
+- **Never run `npm run db:seed` on production.** It writes a demo institute
+  with logins whose password is published in this file.
 
 ## Status
 
@@ -273,6 +318,25 @@ a button somebody presses**, never automatic: a balance that changed by
 itself cannot be explained to the person whose leave it is (ADR-048).
 ⚠ **There is no self-service portal** — the office records leave on behalf
 of staff, and faculty cannot reach the screen at all.
+
+---
+
+### Deployment and hardening
+
+| | |
+|---|---|
+| Standalone build | `output: 'standalone'` plus a `postbuild` step that copies `.next/static` and `public` in (ADR-052) |
+| Health check | `GET /api/health`, unauthenticated, runs `SELECT 1`, recovers without a restart (ADR-053) |
+| CSP | Per-request nonce in `src/middleware.ts`, no `unsafe-inline` on scripts (ADR-054) |
+| Login throttle | Per-address as well as per-account, so one password tried across every email is caught (ADR-055) |
+| Runbook | [`docs/deployment.md`](docs/deployment.md), with systemd, nginx, nightly backups and a quarterly restore drill |
+| CI | `.github/workflows/ci.yml` — the whole check suite plus a boot-and-health smoke test |
+
+What deployment is **not** is a decision about the policy questions below.
+Nothing statutory deducts until someone switches it on, so the build is safe
+to install and demonstrate; it is not safe to run a real payroll on
+assumptions. `docs/deployment.md` ends with the list of what the institute
+still has to supply.
 
 ---
 

@@ -941,3 +941,144 @@ was the thing that mattered:
 Each was invisible in code review and obvious within seconds of a browser
 pass. The rule is cheap to follow and the failure mode is silent, which is
 the worst combination to leave to vigilance.
+
+---
+
+## ADR-052 — The deployable artefact is the standalone directory, not the repository
+
+**Decision.** `next.config.ts` sets `output: 'standalone'`, and a `postbuild`
+step (`scripts/assemble-standalone.mjs`) copies `.next/static` and `public`
+into `.next/standalone/`. That directory — about 110 MB against ~980 MB of
+`node_modules` — is what runs. `npm start` is `node
+.next/standalone/server.js`.
+
+**Why.** A server that needs the full dependency tree to run also needs the
+full dependency tree to be *correct* at run time: a failed `npm ci` during
+an upgrade leaves a box that cannot start, and rolling back means
+re-resolving the same tree again. The standalone directory contains only the
+modules the build actually traced, so a release is a directory copy and a
+service restart, and the previous release is still sitting there intact.
+
+Next.js deliberately leaves `.next/static` and `public` out of that
+directory, on the assumption they are served by a CDN. Here they are not, and
+without them the app boots, answers, and serves HTML with no CSS and no
+JavaScript — which reads as a broken application rather than a missing copy.
+So the copy is a `postbuild` script rather than a line in the runbook: a
+documented manual step that silently half-breaks production is a step that
+will be forgotten. CI asserts the result exists.
+
+`outputFileTracingIncludes` pulls in `.prisma/client/*.node`, because the
+Prisma query engine is loaded by path at run time and tracing cannot see it.
+
+---
+
+## ADR-053 — The health check touches the database
+
+**Decision.** `GET /api/health` is unauthenticated, `force-dynamic`, and runs
+`SELECT 1`. It returns `200 {status:'ok',database:'ok',latencyMs}` or `503
+{status:'down',database:'unreachable'}`. The reason for a failure is logged,
+never returned.
+
+**Why.** A health check that only proves the Node process is listening will
+report a perfectly healthy application that cannot serve a single page,
+because every page in this app reads from Postgres. The useful question is
+not "is the process up" but "can it do its job", and those differ exactly
+when it matters.
+
+It is unauthenticated because an uptime monitor that needs a session is an
+uptime monitor nobody configures. That makes it a public endpoint, so it says
+nothing a stranger could use: no version, no schema, no migration state, no
+connection string, no error text. The latency number is the one detail worth
+exposing, because a check that passes in 400 ms is a warning.
+
+Verified in all three states — up, Postgres stopped, Postgres restarted — and
+it recovers on its own. Prisma reconnects, so a database blip does not need
+an application restart, and the runbook says so, because the instinct under
+pressure is to restart the app.
+
+---
+
+## ADR-054 — Content-Security-Policy with a per-request nonce, not `unsafe-inline`
+
+**Decision.** `src/middleware.ts` generates a fresh nonce per request and
+sets `script-src 'self' 'nonce-…' 'strict-dynamic'`, with `object-src
+'none'`, `base-uri 'self'`, `form-action 'self'` and `frame-ancestors
+'none'`.
+
+**Why.** This app renders names, addresses, remarks and rejection reasons
+that people type, on screens that also show fee balances and payslips. Output
+encoding is the first defence; a CSP is what stands between one missed escape
+and an attacker reading the accounts screen through the accountant's own
+session.
+
+`'unsafe-inline'` would have been one word and no verification, and would
+also have made the header decorative, since the attack it must stop is an
+injected inline script. Next.js needs inline scripts for hydration, which is
+what the nonce is for; `'strict-dynamic'` then covers the chunks those
+scripts load, without maintaining a list of paths that changes every build.
+
+`style-src` keeps `'unsafe-inline'`: React sets inline styles and so does
+Tailwind's runtime, and injected CSS is a far smaller prize than injected
+script. Honest in the header rather than quietly relaxed somewhere else.
+
+Verified in a browser, not by reading the header: sign-in through a server
+action, hydration, client-side navigation, computed styles, a different nonce
+per request, zero violations, across every screen in the app. A CSP is only
+ever proven by the app still working under it.
+
+One practical consequence, for whoever writes browser tests next: the policy
+has no `'unsafe-eval'`, so Playwright's `page.waitForFunction` fails — it
+installs an in-page poller that compiles its predicate with `new Function`.
+That is the policy working, not a bug to route around. Poll with
+`page.evaluate` from the test process instead, which goes over CDP and is not
+subject to CSP; the suites carry a `waitFor` helper that does exactly this.
+Nothing in the application evals, and no test is allowed to make that
+untrue.
+
+---
+
+## ADR-055 — Login is throttled per address as well as per account
+
+**Decision.** `src/lib/auth/throttle.ts` blocks an address after 15 failures
+in 10 minutes, for 15 minutes, tracking at most 10,000 addresses with
+eviction. The existing per-account lockout stays.
+
+**Why.** Per-account lockout stops someone guessing one person's password. It
+does nothing about the attack that actually works against an institute: one
+password — `BellCell@2026`, say, or `Password@123` — tried against every
+email address in turn. Each account sees a single failure and locks nothing.
+
+Per-address counting catches that shape, and the two together cover both
+axes. The bound on tracked addresses is there because the map is the thing an
+attacker can grow: unbounded, the defence becomes the memory leak.
+
+It is in-process memory, which is honest about what it is. One process is the
+deployment (ADR-052), so a restart clears the counters and a second process
+would not share them. That is written at the top of the file, next to the
+note that horizontal scaling means moving this to the database or Redis —
+the next person must not discover it from a graph.
+
+Only trustworthy because nginx overwrites `X-Forwarded-For` with the real
+peer address and the Node process binds `127.0.0.1`. Were the header
+appended to rather than replaced, an attacker would simply send a new
+"address" with every request, and `clientAddress` takes the first entry for
+that reason.
+
+---
+
+## ADR-056 — A setting nobody reads is deleted, not documented
+
+**Decision.** `SESSION_SECRET` is gone from `.env.example`, and `db:up` —
+which ran `docker compose up -d db` with no compose file, in a project
+specified without Docker — is gone from `package.json`.
+
+**Why.** Both were worse than absent. The next person to configure a server
+would have generated a session secret, put it in a password manager, and
+believed sessions were signed with it; they are not — the cookie carries an
+opaque random token and the server stores only its SHA-256, so there is
+nothing to sign. A believed-in control that does nothing is how a real
+weakness goes unexamined for years.
+
+`.env.example` now explains why there is no secret, rather than leaving the
+absence to look like an oversight. The deleted script's absence needs no
+explanation: the runbook is the one about running this thing.

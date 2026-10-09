@@ -1,0 +1,113 @@
+name: CI
+
+# Runs the same suite a developer runs locally: typecheck, lint, unit tests,
+# integration tests against a real PostgreSQL, and a production build. If
+# this is green the standalone server in .next/standalone is deployable.
+#
+# NOTE ON DOCKER: the `services:` block below runs on GitHub's hosted
+# runner, not on the institute's server. The deployment itself is plain
+# Node 22 + PostgreSQL 16 with no container runtime — see docs/deployment.md.
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Integration tests and `prisma migrate deploy` both read this.
+  DATABASE_URL: postgresql://bellcell:bellcell@localhost:5432/bellcell_ci?schema=public
+  SESSION_TTL_HOURS: '12'
+  INSTITUTE_NAME: Bell Cell
+  NEXT_TELEMETRY_DISABLED: '1'
+
+jobs:
+  check:
+    name: Typecheck, lint, tests, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: bellcell
+          POSTGRES_PASSWORD: bellcell
+          POSTGRES_DB: bellcell_ci
+        ports: ['5432:5432']
+        # Without this the job races the database and fails intermittently,
+        # which teaches everyone to ignore a red build.
+        options: >-
+          --health-cmd "pg_isready -U bellcell"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate the Prisma client
+        run: npx prisma generate
+
+      - name: Apply migrations
+        # `migrate deploy` is the production path: it applies committed
+        # migrations and never generates or resets anything.
+        run: npx prisma migrate deploy
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Integration tests
+        # These hit the real database: the fee ledger, payroll posting,
+        # attendance and leave all have money or statutory consequences that
+        # a mocked test would not catch.
+        run: npm run test:int
+
+      - name: Production build
+        run: npm run build
+
+      - name: Confirm the standalone server was assembled
+        # The postbuild step copies .next/static and public into the
+        # standalone directory. If it is ever dropped the app deploys and
+        # renders with no CSS, which is hard to diagnose after the fact.
+        run: |
+          test -f .next/standalone/server.js
+          test -d .next/standalone/.next/static
+          echo "standalone output: $(du -sh .next/standalone | cut -f1)"
+
+      - name: Smoke-test the standalone server
+        # Proves the artefact actually boots and reaches the database,
+        # rather than only that it compiled.
+        run: |
+          node .next/standalone/server.js &
+          SERVER_PID=$!
+          for i in $(seq 1 30); do
+            if curl -sf -o /dev/null http://127.0.0.1:3000/api/health; then break; fi
+            sleep 1
+          done
+          STATUS=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/health)
+          BODY=$(curl -s http://127.0.0.1:3000/api/health)
+          kill $SERVER_PID
+          echo "health: $STATUS $BODY"
+          test "$STATUS" = "200"
+        env:
+          PORT: '3000'
+          HOSTNAME: 127.0.0.1

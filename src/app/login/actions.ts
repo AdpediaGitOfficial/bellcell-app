@@ -7,6 +7,7 @@ import { db } from '@/lib/db'
 import { verifyPassword } from '@/lib/auth/password'
 import { createSession } from '@/lib/auth/session'
 import { recordAudit } from '@/lib/audit'
+import { clientAddress, loginThrottle } from '@/lib/auth/throttle'
 
 const schema = z.object({
   email: z.string().email('Enter a valid email address'),
@@ -35,7 +36,20 @@ export async function loginAction(
 
   const { email, password } = parsed.data
   const hdrs = await headers()
-  const ip = hdrs.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null
+  const address = clientAddress(hdrs)
+  const ip = address === 'unknown' ? null : address
+
+  // Per-ADDRESS throttling, separate from the per-account lockout below.
+  // The account counter stops someone guessing one person's password; this
+  // stops one attacker trying the same password against every address they
+  // can think of, which never trips any single account's counter.
+  const blockedMs = loginThrottle.blockedFor(address)
+  if (blockedMs > 0) {
+    const minutes = Math.max(1, Math.ceil(blockedMs / 60000))
+    return {
+      error: `Too many sign-in attempts from this connection. Try again in ${minutes} minute${minutes === 1 ? '' : 's'}.`,
+    }
+  }
 
   const user = await db.user.findUnique({
     where: { email: email.toLowerCase() },
@@ -47,6 +61,7 @@ export async function loginAction(
   const generic = { error: 'Email or password is incorrect' }
 
   if (!user || !user.isActive) {
+    loginThrottle.recordFailure(address)
     await recordAudit({
       action: 'LOGIN_FAILED',
       entityType: 'User',
@@ -65,6 +80,7 @@ export async function loginAction(
   const ok = await verifyPassword(password, user.passwordHash)
 
   if (!ok) {
+    loginThrottle.recordFailure(address)
     const attempts = user.failedLoginCount + 1
     await db.user.update({
       where: { id: user.id },
@@ -91,6 +107,8 @@ export async function loginAction(
     user.branches.find((b) => b.isDefault)?.branchId ??
     user.branches[0]?.branchId ??
     null
+
+  loginThrottle.recordSuccess(address)
 
   await db.user.update({
     where: { id: user.id },
