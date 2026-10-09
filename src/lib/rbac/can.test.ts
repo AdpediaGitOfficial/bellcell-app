@@ -98,3 +98,41 @@ describe('payroll separation of duties', () => {
     expect(can(faculty, 'people.payroll', 'view')).toBe(false)
   })
 })
+
+describe('attendance permissions', () => {
+  const faculty = { role: 'FACULTY' as const }
+  const staff = { role: 'STAFF' as const }
+  const accountant = { role: 'ACCOUNTANT' as const }
+  const counsellor = { role: 'COUNSELLOR' as const }
+
+  it('lets faculty take and correct a class register', () => {
+    expect(can(faculty, 'academics.attendance', 'create')).toBe(true)
+    expect(can(faculty, 'academics.attendance', 'update')).toBe(true)
+  })
+
+  it('does not let faculty delete a register sheet', () => {
+    expect(can(faculty, 'academics.attendance', 'delete')).toBe(false)
+  })
+
+  it('keeps faculty out of the staff register entirely', () => {
+    expect(can(faculty, 'people.staffAttendance', 'view')).toBe(false)
+  })
+
+  it('lets the front desk mark staff attendance', () => {
+    expect(can(staff, 'people.staffAttendance', 'create')).toBe(true)
+  })
+
+  it('lets an accountant read the register payroll is computed from', () => {
+    expect(can(accountant, 'people.staffAttendance', 'view')).toBe(true)
+  })
+
+  it('does NOT let the accountant change that register', () => {
+    // Whoever runs payroll should not be able to quietly edit its inputs.
+    expect(can(accountant, 'people.staffAttendance', 'update')).toBe(false)
+  })
+
+  it('keeps a counsellor out of both registers', () => {
+    expect(can(counsellor, 'academics.attendance', 'view')).toBe(false)
+    expect(can(counsellor, 'people.staffAttendance', 'view')).toBe(false)
+  })
+})

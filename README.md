@@ -103,6 +103,11 @@ docs/                     analysis, decisions, design system, open questions
   change must not restate what someone was already paid (ADR-033).
 - **Only net pay and the employer's own contribution reach the ledger** —
   never the gross, which is not an outflow (ADR-035).
+- **An unmarked attendance day costs nobody anything.** The system fails in
+  the direction that does not take money from people by accident (ADR-039).
+- **Attendance rules live in `src/lib/attendance/core.ts`** — the shortage
+  thresholds belong to the affiliating university, so they are parameters,
+  and nothing acts on them automatically (ADR-041).
 - **Money moves only through `src/lib/fees/service.ts`**, inside a
   transaction. Never write `paidPaise` or a ledger row by hand.
 - **Brand `#00A59F` is never a background for small white text** (3.05:1,
@@ -218,15 +223,37 @@ runs, and what reaches the ledger.
 because the opposite default silently withholds money an unregistered
 institute would never remit. ⚠ **Income tax is not computed** (ADR-034) — the
 monthly figure is entered from the institute's accountant, for reasons the
-settings screen states. ⚠ **Attendance is still not built**, so unpaid days
-are typed on the run (ADR-037).
+settings screen states.
+
+**Attendance — complete:**
+
+| Screen | What works |
+|---|---|
+| Student Attendance | Bookmarkable class picker (course / batch / year / section / subject / period / date), one-tap marking cycling present → absent → late → excused, mark-all shortcuts, lockable sheets |
+| Register & shortage | Percentages over a date range against the university's thresholds, Clear / Condonation / Short, how many consecutive sessions would clear a short student, XLSX/CSV export |
+| Staff Attendance | Daily sheet with paid and unpaid leave distinguished, statuses that cost money flagged on the row, a month-to-date summary showing exactly what payroll will read |
+| Masters → Holidays | Declared holidays per branch or institute-wide, plus generated weekly offs |
+
+**Attendance feeds payroll.** Opening a run reads that month's staff register
+and seeds each payslip's unpaid days from it, capped at the period and still
+editable on the draft. Once the run is approved it is frozen, so correcting
+attendance in May does not restate March's payslips (ADR-043).
+
+⚠ **An unmarked day costs nobody anything** (ADR-039) — a forgotten register
+must not dock salaries — so the run says how much of the month was actually
+marked rather than letting an empty register look like a clean one.
+⚠ **Nothing bars a student from an examination.** The register reports
+Clear / Condonation / Short against the affiliating university's thresholds
+and acts on none of it (ADR-041). ⚠ **Leave balances are not modelled** —
+whether a day of leave is paid is a judgement made when marking it.
 
 ---
 
 ## All four quoted modules are built
 
-Enquiry · Application (admissions + fees) · Employee (records, logins and
-payroll) · Accounts. Attendance remains out of scope — open question #4.
+Enquiry · Application (admissions + fees) · Employee (records, logins,
+payroll and attendance) · Accounts — plus student attendance, which the
+quotation never asked for but an affiliated institute needs.
 
 Remaining gaps are tracked in
 [`docs/open-questions.md`](docs/open-questions.md). Three of them matter more

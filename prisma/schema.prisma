@@ -59,6 +59,9 @@ model Branch {
   leadImportBatches   LeadImportBatch[]
   payrollRuns         PayrollRun[]
   payrollSetting      PayrollSetting?
+  holidays            Holiday[]
+  attendanceSessions  AttendanceSession[]
+  staffAttendance     StaffAttendance[]
 
   @@map("branches")
 }
@@ -98,11 +101,13 @@ model User {
   overrides UserPermissionOverride[]
   auditLogs AuditLog[]
 
-  assignedLeads       EnquiryLead[]     @relation("LeadAssignee")
-  assignedEnquiries   Enquiry[]         @relation("EnquiryAssignee")
-  followUps           EnquiryFollowUp[]
-  collectedPayments   Payment[]         @relation("PaymentCollectedBy")
-  approvedConcessions FeeConcession[]   @relation("ConcessionApprovedBy")
+  attendanceTaken       AttendanceSession[] @relation("AttendanceTakenBy")
+  staffAttendanceMarked StaffAttendance[]   @relation("StaffAttendanceMarkedBy")
+  assignedLeads         EnquiryLead[]       @relation("LeadAssignee")
+  assignedEnquiries     Enquiry[]           @relation("EnquiryAssignee")
+  followUps             EnquiryFollowUp[]
+  collectedPayments     Payment[]           @relation("PaymentCollectedBy")
+  approvedConcessions   FeeConcession[]     @relation("ConcessionApprovedBy")
 
   @@index([role])
   @@map("users")
@@ -237,6 +242,7 @@ model Course {
   students            Student[]
   feeStructures       FeeStructure[]
   classSections       ClassSection[]
+  attendanceSessions  AttendanceSession[]
   examSchedules       ExamSchedule[]
   leads               EnquiryLead[]
   enquiries           Enquiry[]
@@ -258,10 +264,11 @@ model Batch {
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 
-  students      Student[]
-  feeStructures FeeStructure[]
-  classSections ClassSection[]
-  examSchedules ExamSchedule[]
+  students           Student[]
+  feeStructures      FeeStructure[]
+  classSections      ClassSection[]
+  examSchedules      ExamSchedule[]
+  attendanceSessions AttendanceSession[]
 
   @@map("batches")
 }
@@ -329,6 +336,7 @@ model Subject {
   examScheduleSubjects ExamScheduleSubject[]
   examResultSubjects   ExamResultSubject[]
   studyMaterials       StudyMaterial[]
+  attendanceSessions   AttendanceSession[]
 
   @@unique([code, courseId, courseYear])
   @@index([courseId, courseYear])
@@ -784,6 +792,7 @@ model Student {
   promotions             StudentPromotion[]
   materialIssues         StudyMaterialIssue[]
   notifications          NotificationLog[]
+  attendance             StudentAttendance[]
 
   @@unique([branchId, applicationNo])
   @@unique([branchId, admissionNo])
@@ -940,7 +949,8 @@ model ClassSection {
   course Course @relation(fields: [courseId], references: [id])
   batch  Batch  @relation(fields: [batchId], references: [id])
 
-  rollNumbers RollNumber[]
+  rollNumbers        RollNumber[]
+  attendanceSessions AttendanceSession[]
 
   @@unique([branchId, courseId, batchId, courseYear, name])
   @@map("class_sections")
@@ -1673,6 +1683,7 @@ model Employee {
   languages        EmployeeLanguageSkill[]
   salaryStructures SalaryStructure[]
   payslips         Payslip[]
+  attendance       StaffAttendance[]
 
   @@unique([branchId, employeeCode])
   @@index([branchId, status])
@@ -1990,6 +2001,11 @@ model Payslip {
   /// Entered by the accountant from their CA's figure; see ADR-034.
   manualTdsPaise Int @default(0)
 
+  /// How many days of the month staff attendance was actually marked for
+  /// this employee. 0 means the unpaid-day figure was not derived from a
+  /// register, which the run screen says rather than implying otherwise.
+  attendanceMarkedDays Int @default(0)
+
   remarks   String?
   excluded  Boolean  @default(false)
   createdAt DateTime @default(now())
@@ -2021,4 +2037,147 @@ model PayslipLine {
 
   @@index([payslipId, sortOrder])
   @@map("payslip_lines")
+}
+
+// ------------------------------------------------------------- attendance
+//
+// Attendance was explicitly out of scope in the quotation, and the payroll
+// module shipped without it — unpaid days were typed on the run (ADR-037).
+// This module fills that gap for staff, and adds the student side that an
+// affiliated institute needs for examination eligibility.
+//
+// Two populations, two shapes. Students are marked per CLASS SESSION, so an
+// institute that takes attendance once a day and one that takes it per
+// period both fit. Staff are marked per DAY, because that is what payroll
+// needs and nothing finer is defensible without a biometric feed.
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  /// Present but late; counts as present for percentage (ADR-040).
+  LATE
+  /// Authorised absence — medical, on duty, sport. Excluded from the
+  /// denominator rather than counted as present.
+  EXCUSED
+}
+
+enum StaffAttendanceStatus {
+  PRESENT
+  /// Absent without any approved leave — unpaid.
+  ABSENT
+  /// Half a working day, counted as 0.5 unpaid.
+  HALF_DAY
+  /// Approved and paid. Does NOT reduce salary.
+  PAID_LEAVE
+  /// Approved but unpaid. Reduces salary.
+  UNPAID_LEAVE
+  /// Working, but not at the institute — exam duty, university visit.
+  ON_DUTY
+  /// Declared holiday or weekly off. Never a deduction.
+  HOLIDAY
+}
+
+/// A non-working day. Branch-specific, because a city centre may close for a
+/// local festival the main campus does not.
+model Holiday {
+  id          String   @id @default(cuid())
+  branchId    String? // null = applies to every branch
+  date        DateTime @db.Date
+  name        String
+  /// True for a recurring weekly off (e.g. every Sunday) materialised into
+  /// a row, false for a one-off declared holiday. Kept as a flag so the
+  /// calendar screen can group them.
+  isWeeklyOff Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  branch Branch? @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  // NOTE: this constraint does NOT cover institute-wide holidays, because
+  // Postgres treats NULLs as distinct — two rows with branchId NULL and the
+  // same date would both be accepted. A partial unique index covers that
+  // case; see prisma/migrations/*_holiday_unique_null_branch. Keep both.
+  @@unique([branchId, date])
+  @@index([date])
+  @@map("holidays")
+}
+
+/// One occasion on which a class was marked.
+///
+/// `subjectId` and `period` are optional: an institute taking a single
+/// day-level roll call leaves both null, and the unique constraint still
+/// stops the same class being marked twice for the same day.
+model AttendanceSession {
+  id         String   @id @default(cuid())
+  branchId   String
+  courseId   String
+  batchId    String
+  courseYear Int
+  sectionId  String?
+  subjectId  String?
+  /// 1..n within the day. Null for a single daily roll call.
+  period     Int?
+  date       DateTime @db.Date
+
+  takenById String?
+  notes     String?
+
+  /// Once locked, the sheet is read-only. Corrections after this are a
+  /// deliberate act by someone with the update permission.
+  lockedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  branch  Branch        @relation(fields: [branchId], references: [id])
+  course  Course        @relation(fields: [courseId], references: [id])
+  batch   Batch         @relation(fields: [batchId], references: [id])
+  section ClassSection? @relation(fields: [sectionId], references: [id])
+  subject Subject?      @relation(fields: [subjectId], references: [id])
+  takenBy User?         @relation("AttendanceTakenBy", fields: [takenById], references: [id])
+
+  entries StudentAttendance[]
+
+  @@unique([branchId, courseId, batchId, courseYear, sectionId, subjectId, date, period])
+  @@index([branchId, date])
+  @@index([courseId, batchId, courseYear, date])
+  @@map("attendance_sessions")
+}
+
+model StudentAttendance {
+  id        String           @id @default(cuid())
+  sessionId String
+  studentId String
+  status    AttendanceStatus @default(PRESENT)
+  remarks   String?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  session AttendanceSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student Student           @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, studentId])
+  @@index([studentId, status])
+  @@map("student_attendance")
+}
+
+/// One employee, one day. This is what payroll reads for loss of pay.
+model StaffAttendance {
+  id         String                @id @default(cuid())
+  branchId   String
+  employeeId String
+  date       DateTime              @db.Date
+  status     StaffAttendanceStatus @default(PRESENT)
+  remarks    String?
+  markedById String?
+  createdAt  DateTime              @default(now())
+  updatedAt  DateTime              @updatedAt
+
+  branch   Branch   @relation(fields: [branchId], references: [id])
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  markedBy User?    @relation("StaffAttendanceMarkedBy", fields: [markedById], references: [id])
+
+  @@unique([employeeId, date])
+  @@index([branchId, date])
+  @@map("staff_attendance")
 }

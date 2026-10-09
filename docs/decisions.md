@@ -657,3 +657,150 @@ re-validated on the server (proved by stripping the input's `max` attribute at
 runtime and confirming 99 unpaid days in a 31-day month is still refused) and
 why approval freezes it. If attendance is later built, it feeds this field
 rather than replacing it.
+
+---
+
+## ADR-038 — Students are marked per session, staff per day
+
+**Decision.** Two populations, two shapes. `AttendanceSession` carries an
+optional `subjectId` and `period`, so an institute taking one daily roll call
+and one taking attendance per period both fit without a setting. Staff get one
+row per person per day.
+
+**Why.** For students the unit that matters to the university is the class
+hour, and institutes differ on whether they track it. Making subject and
+period nullable lets the simplest case stay simple — leave both blank and the
+unique constraint still stops the same class being marked twice for a day —
+while a per-period institute gets what it needs from the same table.
+
+For staff, per-day is all payroll can use. Anything finer (in/out times,
+hours worked) implies a biometric or swipe feed that does not exist, and
+inventing precision the data cannot support is worse than not having it.
+
+**Cost.** The register screens have a class picker with six fields. It writes
+to the URL, so a lecturer can bookmark their own class.
+
+---
+
+## ADR-039 — An unmarked day costs nobody anything
+
+**Decision.** `lopDaysFrom([])` is 0. A staff member with no attendance rows
+for a month loses no pay, and a payroll run opened for a month nobody marked
+deducts nothing. The run screen says which it is — "from the register for 5
+of 7 staff" or "no staff attendance was marked for this month" — and each row
+shows how many days were actually marked.
+
+**Why.** The alternative default is that a forgotten register docks everyone's
+salary. Attendance will be marked late, patchily and not at all during term
+breaks, and the system must fail in the direction that does not take money
+from people by accident.
+
+The risk of this default is the opposite error: a month nobody marked looks
+exactly like a month everyone attended. That is why the count of marked days
+is on screen rather than inferred — the figure is visible, so a half-empty
+register is obvious instead of quietly generous.
+
+**Cost.** Someone can be overpaid if the office never marks them absent. That
+is recoverable; an unexplained deduction from a salary is not.
+
+---
+
+## ADR-040 — Late counts as present, excused leaves the denominator
+
+**Decision.** For the attendance percentage, `LATE` counts as attended and
+`EXCUSED` is removed from **both** sides of the fraction — so a student with
+ten sessions, one excused, is measured out of nine.
+
+**Why.** Someone who arrived late was in the room; a percentage that calls
+them absent is reporting something untrue to the university. Institutes that
+convert three lates into one absence do it as a monthly adjustment, which is a
+separate rule and not modelled.
+
+Excused is the interesting one. Counting an approved medical absence as
+present inflates the figure the university sees. Counting it absent punishes
+an absence the institute itself authorised. Removing it from the denominator
+is the only reading that does neither, and it is why `heldSessions` is not
+simply the session count.
+
+A student with no countable sessions gets `null`, not 0% — "no classes were
+held" and "attended none of them" are different facts, and the register
+labels them differently.
+
+---
+
+## ADR-041 — The shortage thresholds are the university's, not ours
+
+**Decision.** 75% required and 65% condonable are **defaults in a parameter**,
+not constants. `shortageBand` takes a `ShortageRule`. Nothing in the system
+blocks a hall ticket, bars an examination, or withholds a result on the basis
+of attendance; the register reports the standing and says in as many words
+that it does not act on it.
+
+**Why.** These figures are set by the affiliating body, differ between
+universities, and sometimes differ by course within one. Hard-coding them
+would be wrong somewhere on the first day. Acting on them automatically would
+be worse: barring a student from an examination is a decision with an appeal
+process attached, and a system that did it silently from a percentage nobody
+had confirmed would be indefensible.
+
+So the register shows Clear / Condonation / Short, tells a short student how
+many consecutive sessions would clear them — "you are at 68%" helps nobody,
+"attend the next 14" does — and stops there.
+
+---
+
+## ADR-042 — Whoever runs payroll cannot edit the register it reads
+
+**Decision.** `ACCOUNTANT` has `people.staffAttendance: view, export` — read
+only. `STAFF` (the front desk) marks it. `FACULTY` take the class register and
+may correct their own sheets, but cannot see the staff register at all.
+
+**Why.** Payroll derives loss of pay from staff attendance (ADR-039). If the
+person who prepares payroll could also change its inputs, the separation of
+duties that ADR-036 established would be decorative — they could simply edit
+the register instead of the payslip.
+
+**Also:** a class register can be locked, which makes it read-only to anyone
+without `academics.attendance:update`. The front desk taking a stand-in roll
+call cannot silently overwrite a lecturer's locked sheet.
+
+---
+
+## ADR-043 — Attendance feeds payroll, but an approved run never moves
+
+**Decision.** Opening a payroll run reads the register for that month and
+seeds each payslip's unpaid days from it, capped at the length of the period.
+The figure stays editable while the run is a draft. Once approved, the run is
+frozen and later corrections to attendance do not touch it.
+
+**Why.** Attendance is the starting point, not the last word — the office
+regularly knows something the register does not, and a system that refused to
+let them say so would be worked around with a spreadsheet.
+
+Freezing on approval matters more. Payslip figures are written down, not
+recomputed (ADR-033), so this already held; the test makes it explicit,
+because "we corrected March's attendance in May and March's payslips changed"
+is the kind of thing nobody discovers until an audit.
+
+**Verified** in both directions: an integration test marks a month, opens a
+run and asserts each person's unpaid days and gross; then approves it,
+rewrites ten days of the register, and asserts nothing moved. A browser pass
+does the same through the actual screens.
+
+---
+
+## ADR-044 — A partial unique index, because Postgres NULLs are not equal
+
+**Decision.** `Holiday` has `@@unique([branchId, date])` **and** a partial
+unique index on `date WHERE branchId IS NULL`, declared in a hand-written
+migration because Prisma's `@@unique` cannot express it.
+
+**Why.** Postgres treats NULLs as distinct in a unique constraint, so the
+Prisma-level constraint does not stop two institute-wide holidays (branchId
+NULL) landing on the same date. Found by a browser pass: adding "Children's
+Day" and then "Duplicate" on 14 November 2026 both saved, and the screen
+showed the date twice.
+
+The model carries a comment pointing at the migration, because the next
+person to read the schema will otherwise assume the `@@unique` covers it —
+which is exactly the assumption that produced the bug.

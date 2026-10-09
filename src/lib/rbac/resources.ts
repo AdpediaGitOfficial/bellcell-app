@@ -36,6 +36,8 @@ export const RESOURCES = {
   'admission.studyMaterial': 'Admissions · Study Materials',
   'admission.promotion': 'Admissions · Promotion & Transfer',
 
+  'academics.attendance': 'Academics · Student Attendance',
+
   'exam.schedule': 'Examinations · Schedule',
   'exam.result': 'Examinations · Results',
   'exam.certificate': 'Examinations · TC & Completion Certificates',
@@ -46,6 +48,7 @@ export const RESOURCES = {
 
   'people.employee': 'People · Employees',
   'people.payroll': 'People · Payroll',
+  'people.staffAttendance': 'People · Staff Attendance',
 
   reports: 'Reports',
   masters: 'Masters',

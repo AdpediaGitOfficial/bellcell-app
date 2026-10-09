@@ -47,6 +47,7 @@ export const MATRIX: Record<UserRole, RoleMatrix> = {
     'admission.certificateCustody': CRU_EXPORT,
     'admission.studyMaterial': CRU_EXPORT,
     'admission.promotion': CRU_EXPORT,
+    'academics.attendance': ALL,
     'exam.schedule': ALL,
     'exam.result': ALL,
     'exam.certificate': ALL,
@@ -55,6 +56,7 @@ export const MATRIX: Record<UserRole, RoleMatrix> = {
     'accounts.dayBook': VIEW_EXPORT,
     'people.employee': ALL,
     'people.payroll': ALL, // including approve — see the ACCOUNTANT row
+    'people.staffAttendance': ALL,
     reports: VIEW_EXPORT,
     masters: ALL,
     'settings.user': ALL,
@@ -75,6 +77,10 @@ export const MATRIX: Record<UserRole, RoleMatrix> = {
     // out what everyone is owed should not also be the person who releases
     // it — the same separation as fee concessions above.
     'people.payroll': CRU_EXPORT,
+    // Reads the register payroll is computed from, but does not mark it.
+    // Whoever runs payroll should not also be able to quietly change the
+    // attendance it reads.
+    'people.staffAttendance': VIEW_EXPORT,
     reports: VIEW_EXPORT,
     masters: VIEW,
   },
@@ -95,6 +101,9 @@ export const MATRIX: Record<UserRole, RoleMatrix> = {
     dashboard: VIEW,
     'admission.application': VIEW,
     'admission.studyMaterial': CRU,
+    // Faculty take the register — they are the people in the room. They may
+    // correct a sheet they got wrong, but not delete one.
+    'academics.attendance': CRU_EXPORT,
     'exam.schedule': VIEW,
     'exam.result': CRU,
     reports: VIEW,
@@ -110,6 +119,10 @@ export const MATRIX: Record<UserRole, RoleMatrix> = {
     'admission.idCard': CRU,
     'admission.certificateCustody': VIEW,
     'admission.studyMaterial': CRU,
+    // The front desk marks the staff register and can take a class roll
+    // call when a lecturer is away, but sees no salary consequence of it.
+    'academics.attendance': CRU_EXPORT,
+    'people.staffAttendance': CRU_EXPORT,
     reports: VIEW,
     masters: VIEW,
   },

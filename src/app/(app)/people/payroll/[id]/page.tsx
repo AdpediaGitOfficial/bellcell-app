@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation'
 import {
   AlertTriangle,
   ArrowLeft,
+  ClipboardList,
   Download,
   FileText,
   UserX,
@@ -68,6 +69,7 @@ export default async function PayrollRunPage({
 
   const included = run.payslips.filter((p) => !p.excluded)
   const employerTotal = run.netPaise + run.employerContributionPaise
+  const fromRegister = run.payslips.filter((p) => p.attendanceMarkedDays > 0)
 
   return (
     <>
@@ -126,6 +128,40 @@ export default async function PayrollRunPage({
           }
         />
       </div>
+
+      {/* Where the unpaid days came from. Without this the figure looks
+          typed, and nobody knows whether a zero means "present all month" or
+          "nobody opened the register". */}
+      <p className="no-print mb-4 flex items-start gap-2 rounded-card bg-[rgb(var(--surface-sunken))] px-4 py-3 text-xs text-muted">
+        <ClipboardList className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+        {fromRegister.length > 0 ? (
+          <span>
+            Unpaid days came <span className="font-medium">from the register</span>{' '}
+            for {fromRegister.length} of {run.payslips.length} staff.{' '}
+            {isDraft
+              ? 'They stay editable until the run is approved — attendance is the starting point, not the last word.'
+              : 'They were frozen on approval, so correcting attendance now does not change these payslips.'}{' '}
+            <Link
+              href={`/people/attendance?date=${String(run.year)}-${String(run.month).padStart(2, '0')}-01`}
+              className="font-medium text-brand-700 underline dark:text-brand-400"
+            >
+              Open the staff register
+            </Link>
+          </span>
+        ) : (
+          <span>
+            No staff attendance was marked for this month, so every unpaid-day
+            figure starts at zero.{' '}
+            <Link
+              href={`/people/attendance?date=${String(run.year)}-${String(run.month).padStart(2, '0')}-01`}
+              className="font-medium text-brand-700 underline dark:text-brand-400"
+            >
+              Mark the register
+            </Link>{' '}
+            and open the run again, or enter the days by hand below.
+          </span>
+        )}
+      </p>
 
       {!config.pfEnabled && !config.esiEnabled && !config.ptEnabled && (
         <p className="no-print mb-4 flex items-start gap-2 rounded-card bg-[rgb(var(--surface-sunken))] px-4 py-3 text-xs text-muted">
@@ -249,6 +285,11 @@ export default async function PayrollRunPage({
                           {Number(p.lopDays) || '—'}
                         </span>
                       )}
+                      <span className="mt-0.5 block text-[11px] text-faint">
+                        {p.attendanceMarkedDays > 0
+                          ? `${p.attendanceMarkedDays} days marked`
+                          : 'not in the register'}
+                      </span>
                     </td>
                     <td className="numeric px-3 py-2.5 text-right text-strong">
                       {formatPaise(p.grossPaise)}

@@ -2,6 +2,7 @@ import 'server-only'
 import type { PaymentMode, Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { recordDailyTransaction } from '@/lib/accounts/service'
+import { staffLopForMonth } from '@/lib/attendance/service'
 import {
   PayrollError,
   buildPayslip,
@@ -138,6 +139,9 @@ export interface CreateRunInput {
   workingDays?: number
 }
 
+/** Where a payslip's unpaid-day figure came from. */
+export type LopSource = 'ATTENDANCE' | 'NONE'
+
 /**
  * Open a payroll run and draft a payslip for everyone eligible.
  *
@@ -145,10 +149,19 @@ export interface CreateRunInput {
  * salary structure in force on the last day of the month. Someone without a
  * structure is reported back rather than silently skipped — "why was X not
  * paid" must have an answer on screen.
+ *
+ * Unpaid days come from STAFF ATTENDANCE when any was marked for that month,
+ * and are zero otherwise. They remain editable on the draft: attendance is
+ * the starting point, not the last word, because the office may know
+ * something the register does not. The run records how many days were
+ * actually marked so a half-empty month is visible rather than quietly
+ * generous.
  */
 export async function createPayrollRun(input: CreateRunInput): Promise<{
   runId: string
   included: number
+  /** How many of the included payslips took unpaid days from attendance. */
+  fromAttendance: number
   skipped: { employeeId: string; employeeCode: string; name: string; reason: string }[]
 }> {
   const { branchId, year, month } = input
@@ -183,6 +196,8 @@ export async function createPayrollRun(input: CreateRunInput): Promise<{
     orderBy: { employeeCode: 'asc' },
   })
 
+  const attendance = await staffLopForMonth(branchId, year, month)
+
   const skipped: {
     employeeId: string
     employeeCode: string
@@ -191,6 +206,8 @@ export async function createPayrollRun(input: CreateRunInput): Promise<{
   }[] = []
   const drafts: {
     employeeId: string
+    lopDays: number
+    markedDays: number
     result: ReturnType<typeof buildPayslip>
   }[] = []
 
@@ -208,10 +225,17 @@ export async function createPayrollRun(input: CreateRunInput): Promise<{
       continue
     }
 
+    const marked = attendance.get(employee.id)
+    // Cap at the period: a month marked on a different working-day basis
+    // must not produce more unpaid days than the run has.
+    const lopDays = Math.min(marked?.lopDays ?? 0, workingDays)
+
     try {
       drafts.push({
         employeeId: employee.id,
-        result: buildPayslip({ lines, workingDays, lopDays: 0, month, config }),
+        lopDays,
+        markedDays: marked?.markedDays ?? 0,
+        result: buildPayslip({ lines, workingDays, lopDays, month, config }),
       })
     } catch (error) {
       skipped.push({
@@ -255,8 +279,9 @@ export async function createPayrollRun(input: CreateRunInput): Promise<{
           runId: created.id,
           employeeId: draft.employeeId,
           workingDays,
-          lopDays: 0,
-          paidDays: workingDays,
+          lopDays: draft.lopDays,
+          attendanceMarkedDays: draft.markedDays,
+          paidDays: workingDays - draft.lopDays,
           grossPaise: draft.result.grossPaise,
           deductionsPaise: draft.result.deductionsPaise,
           netPaise: draft.result.netPaise,
@@ -278,7 +303,12 @@ export async function createPayrollRun(input: CreateRunInput): Promise<{
     return created
   })
 
-  return { runId: run.id, included: drafts.length, skipped }
+  return {
+    runId: run.id,
+    included: drafts.length,
+    fromAttendance: drafts.filter((d) => d.markedDays > 0).length,
+    skipped,
+  }
 }
 
 /**

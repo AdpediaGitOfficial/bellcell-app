@@ -84,6 +84,11 @@ const MASTERS: {
         description: 'Basic, DA, HRA, allowances and recoveries',
       },
       { label: 'Religion', description: 'Used on the admission form' },
+      {
+        label: 'Holidays',
+        href: '/masters/holidays',
+        description: 'Declared holidays and weekly offs, per branch',
+      },
     ],
   },
 ]

@@ -56,9 +56,28 @@ much rework the answer causes if it arrives late.
      figure is typed in. Is a TDS module wanted, with Form 16 and quarterly
      returns? That is a project of its own.
 
-4a. **Attendance is still not built**, so unpaid days are typed on the payroll
-   run rather than counted from a register. Is an attendance module wanted,
-   and if so does payroll take its loss-of-pay days from it automatically?
+4a. **Attendance — built, and every rule in it is ours.** Staff and student
+   attendance both exist, and payroll now takes loss-of-pay days from the
+   staff register (ADR-043). Confirm:
+   - **The shortage thresholds.** 75% required and 65% condonable are
+     assumptions; they are set by the affiliating university, differ between
+     universities and sometimes by course. They are parameters, not
+     constants — see `src/lib/attendance/core.ts`.
+   - **What a shortage should DO.** Nothing currently bars a student from an
+     examination, withholds a hall ticket or blocks a result (ADR-041).
+     Should it, and with what appeal route?
+   - **Does late count as present?** We say yes. Institutes that convert
+     three lates into an absence need that rule adding.
+   - **Is an excused absence out of the denominator?** We say yes — neither
+     present nor penalised. Some universities count it present.
+   - **Leave balances and entitlements are NOT modelled.** Whether a day is
+     paid or unpaid is typed when marking it. A real leave module (casual /
+     earned / medical balances, accrual, carry-forward, an approval
+     workflow) is a project of its own. Wanted?
+   - **Is there a weekly off?** None is assumed. The holiday master can
+     generate one, but nobody has said whether the institute has one.
+   - **Half days** are the only fraction supported. Hourly or period-level
+     loss of pay is not.
 
 5. **Permission matrix sign-off.** `src/lib/rbac/matrix.ts` is a proposal.
    Print it and have the principal sign it. Specifically: should a counsellor
@@ -134,8 +153,9 @@ much rework the answer causes if it arrives late.
 
 ## Explicitly out of scope in this build
 
-Student attendance · staff attendance · timetable · library · hostel ·
-transport · biometric · automatic TDS computation and Form 16 ·
-alumni/placement · inventory · mobile app (responsive web only) ·
-online payment gateway · student/parent portal (so staff cannot see their own
-payslips — only the office can).
+Timetable · library · hostel · transport · biometric or swipe attendance
+capture (attendance is marked by hand) · leave balances and approval
+workflow · automatic TDS computation and Form 16 · alumni/placement ·
+inventory · mobile app (responsive web only) · online payment gateway ·
+student/parent portal (so neither staff nor students can see their own
+payslips or attendance — only the office can).

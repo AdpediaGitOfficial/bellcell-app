@@ -1152,6 +1152,165 @@ async function main() {
   }
   console.log('  \u00b7 7 salary structures (statutory deductions left switched OFF)')
 
+
+  // --------------------------------------------------------------- holidays
+  const holidaySpecs: [string, string][] = [
+    ['2026-01-26', 'Republic Day'],
+    ['2026-04-14', 'Vishu'],
+    ['2026-05-01', 'May Day'],
+    ['2026-08-15', 'Independence Day'],
+    ['2026-08-26', 'Onam'],
+    ['2026-08-27', 'Thiruvonam'],
+    ['2026-10-02', 'Gandhi Jayanti'],
+    ['2026-12-25', 'Christmas'],
+  ]
+  for (const [date, name] of holidaySpecs) {
+    await db.holiday.upsert({
+      // Institute-wide: branchId null. The composite unique treats null as a
+      // distinct value in Postgres, so findFirst-then-create is used instead.
+      where: { id: `seed-holiday-${date}` },
+      update: {},
+      create: {
+        id: `seed-holiday-${date}`,
+        branchId: null,
+        date: new Date(`${date}T00:00:00.000Z`),
+        name,
+      },
+    })
+  }
+
+  // ------------------------------------------------------- staff attendance
+  // One realistic month (August 2026) for the main campus, so the payroll
+  // run for that month has a register to read rather than assuming nobody
+  // was ever away.
+  const staffForAttendance = await db.employee.findMany({
+    where: { branchId: main_.id, archivedAt: null },
+    orderBy: { employeeCode: 'asc' },
+    select: { id: true, employeeCode: true },
+  })
+
+  const augustHolidays = new Set(['2026-08-15', '2026-08-26', '2026-08-27'])
+  // Who was away, and how. Everyone else is simply present.
+  const absences: Record<string, Record<number, 'ABSENT' | 'HALF_DAY' | 'PAID_LEAVE' | 'UNPAID_LEAVE'>> = {
+    'EMP-002': { 5: 'PAID_LEAVE', 6: 'PAID_LEAVE' },
+    'EMP-004': { 11: 'UNPAID_LEAVE', 12: 'UNPAID_LEAVE' },
+    'EMP-005': { 18: 'HALF_DAY', 19: 'ABSENT' },
+    'EMP-007': { 24: 'HALF_DAY' },
+  }
+
+  const existingStaffMarks = await db.staffAttendance.count({
+    where: {
+      branchId: main_.id,
+      date: {
+        gte: new Date('2026-08-01T00:00:00.000Z'),
+        lt: new Date('2026-09-01T00:00:00.000Z'),
+      },
+    },
+  })
+
+  if (existingStaffMarks === 0 && staffForAttendance.length > 0) {
+    const rows: Prisma.StaffAttendanceCreateManyInput[] = []
+    for (const employee of staffForAttendance) {
+      for (let day = 1; day <= 31; day += 1) {
+        const iso = `2026-08-${String(day).padStart(2, '0')}`
+        const date = new Date(`${iso}T00:00:00.000Z`)
+        // Sundays are not marked at all, which is the honest state for an
+        // institute with no weekly-off rows generated yet.
+        if (date.getUTCDay() === 0) continue
+
+        const status = augustHolidays.has(iso)
+          ? 'HOLIDAY'
+          : (absences[employee.employeeCode]?.[day] ?? 'PRESENT')
+
+        rows.push({
+          branchId: main_.id,
+          employeeId: employee.id,
+          date,
+          status,
+        })
+      }
+    }
+    await db.staffAttendance.createMany({ data: rows, skipDuplicates: true })
+    console.log(`  \u00b7 ${rows.length} staff attendance records for August 2026`)
+  }
+
+  // ----------------------------------------------------- student attendance
+  // Twelve sessions for one cohort, with a deliberate spread so the shortage
+  // report has all three bands to show.
+  const currentBatch = await db.batch.findFirst({
+    where: { isCurrent: true },
+    select: { id: true },
+  })
+  // The biggest year-1 cohort at the main campus, so the demo register is
+  // worth looking at rather than four rows.
+  const biggestCohort = currentBatch
+    ? (
+        await db.student.groupBy({
+          by: ['courseId'],
+          where: {
+            branchId: main_.id,
+            batchId: currentBatch.id,
+            courseYear: 1,
+            archivedAt: null,
+          },
+          _count: { courseId: true },
+          orderBy: { _count: { courseId: 'desc' } },
+          take: 1,
+        })
+      )[0]
+    : undefined
+  const attendanceCourse = biggestCohort ? { id: biggestCohort.courseId } : null
+
+  if (attendanceCourse && currentBatch) {
+    const cohort = await db.student.findMany({
+      where: {
+        branchId: main_.id,
+        courseId: attendanceCourse.id,
+        batchId: currentBatch.id,
+        courseYear: 1,
+        archivedAt: null,
+      },
+      orderBy: { firstName: 'asc' },
+      take: 20,
+      select: { id: true },
+    })
+
+    const existingSessions = await db.attendanceSession.count({
+      where: { branchId: main_.id, courseId: attendanceCourse.id },
+    })
+
+    if (existingSessions === 0 && cohort.length > 0) {
+      for (let i = 0; i < 12; i += 1) {
+        const date = new Date(Date.UTC(2026, 7, 3 + i))
+        if (date.getUTCDay() === 0) continue
+
+        const session = await db.attendanceSession.create({
+          data: {
+            branchId: main_.id,
+            courseId: attendanceCourse.id,
+            batchId: currentBatch.id,
+            courseYear: 1,
+            date,
+          },
+        })
+
+        await db.studentAttendance.createMany({
+          data: cohort.map((student, index) => {
+            // Student 0 attends everything; the last two miss most of it, so
+            // the register shows Clear, Condonation and Short.
+            let status: 'PRESENT' | 'ABSENT' | 'LATE' | 'EXCUSED' = 'PRESENT'
+            if (index === cohort.length - 1 && i % 3 !== 0) status = 'ABSENT'
+            else if (index === cohort.length - 2 && i % 4 === 0) status = 'ABSENT'
+            else if (index === 2 && i === 5) status = 'LATE'
+            else if (index === 3 && i === 7) status = 'EXCUSED'
+            return { sessionId: session.id, studentId: student.id, status }
+          }),
+        })
+      }
+      console.log(`  \u00b7 12 class registers for a cohort of ${cohort.length}`)
+    }
+  }
+
   console.log('\nSeed complete.')
   console.log(`  Sign in with any of:`)
   for (const [email, , role] of userSpecs) {
